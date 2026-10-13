@@ -7,7 +7,7 @@
 <!-- Tailwind & Fonts -->
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <!-- Chart.js & Plaid -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
@@ -27,7 +27,9 @@
         animation: {
           'bounce-slight': 'bounce-slight 2s infinite',
           'grow': 'grow 0.4s ease-out forwards',
-          'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+          'fade-in-up': 'fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+          'progress-bar': 'progress 4.5s linear forwards',
+          'float': 'float 4s ease-in-out infinite',
         },
         keyframes: {
           'bounce-slight': {
@@ -37,6 +39,18 @@
           'grow': {
             '0%': { transform: 'scale(0.95)', opacity: '0' },
             '100%': { transform: 'scale(1)', opacity: '1' },
+          },
+          'fadeInUp': {
+            '0%': { opacity: '0', transform: 'translateY(20px)' },
+            '100%': { opacity: '1', transform: 'translateY(0)' },
+          },
+          'progress': {
+            '0%': { width: '0%' },
+            '100%': { width: '100%' },
+          },
+          'float': {
+            '0%, 100%': { transform: 'translateY(0)' },
+            '50%': { transform: 'translateY(-15px)' },
           }
         }
       }
@@ -756,7 +770,7 @@ function Rewards({ S }) {
   );
 }
 
-// Auth Component (Now features premium loading and branding)
+// PREMIUM AUTHENTICATION COMPONENT
 function Login({ onLogin }) {
   const [mode, setMode] = useState("login");
   const [username, setUsername] = useState("");
@@ -789,7 +803,6 @@ function Login({ onLogin }) {
       errorMsg = "Could not connect to server."; 
     }
 
-    // Ensure the premium loading screen runs for at least 4.5 seconds
     const elapsed = Date.now() - startTime;
     const remainingTime = Math.max(0, 4500 - elapsed);
 
@@ -807,34 +820,74 @@ function Login({ onLogin }) {
 
   if (isLoadingScreen) {
     return (
-      <div className="fixed inset-0 bg-slate-50/90 dark:bg-darkBg/95 backdrop-blur-md z-50 flex flex-col items-center justify-between p-6">
-        <div className="flex-1 flex flex-col items-center justify-center animate-grow">
-          <div className="text-7xl mb-6 animate-pulse-slow">🌳</div>
-          <h1 className="text-4xl font-extrabold text-primary mb-6">My Money Tree</h1>
-          <div className="flex items-center gap-4 text-slate-600 dark:text-slate-300 font-bold text-lg bg-white/50 dark:bg-slate-800/50 py-3 px-6 rounded-full shadow-sm border border-slate-200 dark:border-slate-700">
-            <i className="fas fa-circle-notch fa-spin text-primary"></i> 
-            {mode === "login" ? "Accessing your wealth profile..." : "Planting your new seed..."}
+      <div className="fixed inset-0 bg-slate-50/90 dark:bg-darkBg/95 backdrop-blur-2xl z-50 flex flex-col items-center justify-center p-6 overflow-hidden">
+        
+        {/* Ambient Animated Glows */}
+        <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] bg-primary/20 rounded-full blur-[100px] animate-pulse"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-blue-500/10 rounded-full blur-[100px] animate-pulse" style={{ animationDelay: '1.5s' }}></div>
+
+        {/* Centerpiece Branding */}
+        <div className="flex-1 flex flex-col items-center justify-center relative z-10 w-full max-w-md pt-10">
+          <div className="text-8xl mb-6 animate-float filter drop-shadow-lg">🌳</div>
+          
+          <h1 className="text-4xl sm:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-br from-primary to-emerald-500 mb-8 tracking-tight text-center animate-fade-in-up">
+            My Money Tree
+          </h1>
+          
+          {/* Cinematic Loading Bar */}
+          <div className="w-full max-w-[240px] h-1.5 bg-slate-200/50 dark:bg-slate-800/50 rounded-full overflow-hidden mb-6 opacity-0 animate-fade-in-up backdrop-blur-sm" style={{ animationDelay: '0.2s' }}>
+            <div className="h-full bg-gradient-to-r from-emerald-300 via-primary to-emerald-300 animate-progress-bar rounded-full"></div>
+          </div>
+          
+          <div className="text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em] opacity-0 animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
+            {mode === "login" ? "Authenticating Profile" : "Planting Your Seed"}
           </div>
         </div>
 
-        {/* Premium Developer Credits Section */}
-        <div className="glass p-6 rounded-[2rem] w-full max-w-lg mb-8 shadow-2xl border-t-4 border-t-primary animate-grow">
-          <p className="text-center text-slate-400 font-bold uppercase tracking-widest text-[10px] mb-5">Built with ❤️ By</p>
-          <div className="space-y-5">
-            <div className="flex items-center gap-4 bg-slate-50/50 dark:bg-slate-800/50 p-3 rounded-2xl">
-              <div className="w-12 h-12 rounded-full bg-primary/20 text-primary flex items-center justify-center font-extrabold text-xl flex-shrink-0">K</div>
-              <div>
-                <p className="font-bold text-slate-800 dark:text-slate-100 text-sm">Kushal Kumar Guha</p>
-                <p className="text-xs text-slate-500 font-semibold mt-0.5">Backend Architecture • UI Design • AI Integration</p>
+        {/* Premium Credits Dock */}
+        <div className="w-full max-w-2xl relative z-10 pb-8 sm:pb-12">
+          <div className="text-center mb-8 opacity-0 animate-fade-in-up" style={{ animationDelay: '0.6s' }}>
+            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400/80 dark:text-slate-500/80 relative inline-block">
+              <span className="absolute -left-16 top-1/2 w-12 h-[1px] bg-slate-300 dark:bg-slate-700"></span>
+              Crafted With Excellence
+              <span className="absolute -right-16 top-1/2 w-12 h-[1px] bg-slate-300 dark:bg-slate-700"></span>
+            </span>
+          </div>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+            
+            {/* Developer 1 Card */}
+            <div className="glass relative overflow-hidden p-5 rounded-3xl opacity-0 animate-fade-in-up border border-white/50 dark:border-white/5 group shadow-2xl" style={{ animationDelay: '0.8s' }}>
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+              <div className="flex items-center gap-4 relative z-10">
+                <div className="w-14 h-14 rounded-[1.2rem] bg-gradient-to-br from-primary to-emerald-600 p-[2px] shadow-lg shadow-primary/20 flex-shrink-0">
+                  <div className="w-full h-full bg-white dark:bg-slate-900 rounded-[1.1rem] flex items-center justify-center">
+                    <span className="font-black text-xl text-transparent bg-clip-text bg-gradient-to-br from-primary to-emerald-600">K</span>
+                  </div>
+                </div>
+                <div>
+                  <p className="font-extrabold text-slate-800 dark:text-slate-100 text-[15px] tracking-tight">Kushal Kumar Guha</p>
+                  <p className="text-[10px] text-primary dark:text-emerald-400 font-black uppercase tracking-[0.1em] mt-1">Backend • UI Design • AI</p>
+                </div>
               </div>
             </div>
-            <div className="flex items-center gap-4 bg-slate-50/50 dark:bg-slate-800/50 p-3 rounded-2xl">
-              <div className="w-12 h-12 rounded-full bg-primary/20 text-primary flex items-center justify-center font-extrabold text-xl flex-shrink-0">A</div>
-              <div>
-                <p className="font-bold text-slate-800 dark:text-slate-100 text-sm">Arpita Dam Nova</p>
-                <p className="text-xs text-slate-500 font-semibold mt-0.5">Frontend Features • Login Architecture • Interactive UI Components</p>
+
+            {/* Developer 2 Card */}
+            <div className="glass relative overflow-hidden p-5 rounded-3xl opacity-0 animate-fade-in-up border border-white/50 dark:border-white/5 group shadow-2xl" style={{ animationDelay: '1.0s' }}>
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+              <div className="flex items-center gap-4 relative z-10">
+                <div className="w-14 h-14 rounded-[1.2rem] bg-gradient-to-br from-blue-500 to-indigo-600 p-[2px] shadow-lg shadow-blue-500/20 flex-shrink-0">
+                  <div className="w-full h-full bg-white dark:bg-slate-900 rounded-[1.1rem] flex items-center justify-center">
+                    <span className="font-black text-xl text-transparent bg-clip-text bg-gradient-to-br from-blue-500 to-indigo-600">A</span>
+                  </div>
+                </div>
+                <div>
+                  <p className="font-extrabold text-slate-800 dark:text-slate-100 text-[15px] tracking-tight">Arpita Dam Nova</p>
+                  <p className="text-[10px] text-blue-500 dark:text-indigo-400 font-black uppercase tracking-[0.1em] mt-1">Frontend Features • Login Auth</p>
+                </div>
               </div>
             </div>
+
           </div>
         </div>
       </div>
