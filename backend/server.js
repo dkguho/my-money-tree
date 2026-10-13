@@ -5,10 +5,31 @@ require("dotenv").config();
 
 const app = express();
 
-app.use(cors({
-  origin: "*", // We will tighten this to your specific Vercel URL later for security
-  credentials: true
-}));
+const allowedOrigins = [
+  "https://my-money-tree-roan.vercel.app",
+  "http://localhost:5173",
+  "http://localhost:3000"
+];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (e.g. mobile apps or curl) or if origin is in whitelist
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+};
+
+// Enable CORS for all routes
+app.use(cors(corsOptions));
+
+// Explicitly respond to preflight OPTIONS requests across all routes
+app.options("*", cors(corsOptions));
 
 const PORT = process.env.PORT || 5000;
 
