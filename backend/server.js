@@ -5,7 +5,6 @@ require("dotenv").config();
 
 const app = express();
 
-const cors = require("cors");
 app.use(cors({
   origin: "*", // We will tighten this to your specific Vercel URL later for security
   credentials: true
