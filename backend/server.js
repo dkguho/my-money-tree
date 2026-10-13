@@ -4,6 +4,13 @@ const cors = require("cors");
 require("dotenv").config();
 
 const app = express();
+
+const cors = require("cors");
+app.use(cors({
+  origin: "*", // We will tighten this to your specific Vercel URL later for security
+  credentials: true
+}));
+
 const PORT = process.env.PORT || 5000;
 
 app.use(cors());
