@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>GoalJar - Smart Budgeting</title>
+<title>My Money Tree - Smart Budgeting</title>
 <!-- Tailwind & Fonts -->
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
@@ -27,6 +27,7 @@
         animation: {
           'bounce-slight': 'bounce-slight 2s infinite',
           'grow': 'grow 0.4s ease-out forwards',
+          'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
         },
         keyframes: {
           'bounce-slight': {
@@ -105,8 +106,8 @@
 const { useState, useEffect, useRef } = React;
 
 const API_URL = "https://my-money-tree.onrender.com/api";
-const TOKEN_KEY = "goaljar.token.v1";
-const SESSION_KEY = "goaljar.session.v1";
+const TOKEN_KEY = "mymoneytree.token.v1";
+const SESSION_KEY = "mymoneytree.session.v1";
 
 const tk = (n) => "৳" + Math.round(n).toLocaleString("en-IN");
 const uid = () => Math.random().toString(36).slice(2, 9);
@@ -126,22 +127,6 @@ function verdict(S, price, envId) {
   else { cls = "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 border-green-200 dark:border-green-800"; msg = `You can afford this. ${e ? e.name : "Folder"} drops to ${tk(after)} and your month to ${tk(total - price)}.`; }
   if (goalLeft > 0 && after >= 0) msg += ` You still need ${tk(goalLeft)} across your savings goals.`;
   return { cls, msg };
-}
-
-function advise(S, q) {
-  const m = q.replace(/,/g, "").match(/\d+/), total = S.income - totalSpent(S), sp = totalSpent(S);
-  if (m) {
-    const p = +m[0];
-    if (!S.income) return "Set your monthly income first.";
-    if (p > total) return `Not now. ${tk(p)} is more than the ${tk(total)} you have left.`;
-    return `You can afford it, but only ${tk(total - p)} would be left this month. Consider adding it to your wishlist for 48 hours first.`;
-  }
-  if (!sp) return "Add a few expenses first, then I can find patterns.";
-  const top = [...S.envs].sort((a, b) => spent(S, b.id) - spent(S, a.id))[0], t = spent(S, top.id);
-  let r = `**${top.name}** is your biggest spend: ${tk(t)} (${Math.round((t / sp) * 100)}% of spending). Cutting 10% would free ${tk(t * 0.1)} for savings.`;
-  const o = S.envs.filter((e) => spent(S, e.id) > e.limit);
-  if (o.length) r += ` \n\n⚠️ Over budget: ${o.map((e) => e.name).join(", ")}.`;
-  return r;
 }
 
 // Data Hook
@@ -168,8 +153,8 @@ function useStore(username) {
           exp: data.exp || [],
           goals: data.goals || [],
           wish: data.wish || [],
-          syncMode: data.syncMode || "manual", // NEW
-          bankInbox: data.bankInbox || [],     // NEW
+          syncMode: data.syncMode || "manual", 
+          bankInbox: data.bankInbox || [],     
         });
         setIsLoaded(true); setSyncStatus("saved");
       }).catch(() => setSyncStatus("error"));
@@ -201,15 +186,9 @@ function PlaidBtn() {
   const connect = async () => {
     setLoading(true);
     try {
-      // ১. লোকাল স্টোরেজ থেকে ইউজারের লগইন টোকেনটি বের করে আনা হচ্ছে
       const token = localStorage.getItem(TOKEN_KEY);
-
-      // ২. টোকেনসহ ব্যাকএন্ডে রিকোয়েস্ট পাঠানো হচ্ছে
       const res = await fetch(`${API_URL}/plaid/create-link-token`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${token}` // টোকেন পাঠানো হলো
-        }
+        method: "POST", headers: { "Authorization": `Bearer ${token}` }
       });
       const data = await res.json();
 
@@ -222,21 +201,15 @@ function PlaidBtn() {
       const handler = window.Plaid.create({
         token: data.link_token,
         onSuccess: async (public_token) => {
-          // 1. Exchange Token
           await fetch(`${API_URL}/plaid/exchange-public-token`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+            method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
             body: JSON.stringify({ public_token }),
           });
-          
-          // 2. Fetch Live Balance
           await fetch(`${API_URL}/plaid/balance`, { headers: { "Authorization": `Bearer ${token}` } });
-          
-          // 3. Sync initial transactions
           await fetch(`${API_URL}/plaid/sync`, { headers: { "Authorization": `Bearer ${token}` } });
           
           alert("Bank linked successfully! Refreshing dashboard...");
-          window.location.reload(); // রিলোড হয়ে নতুন ব্যালেন্স দেখাবে
+          window.location.reload(); 
         },
         onExit: () => setLoading(false),
       });
@@ -419,7 +392,6 @@ function Expenses({ S, setS }) {
     setAmt(""); setNote("");
   };
 
-  // NEW: Approve Bank Transaction
   const approveTx = (tx, selectedEnvId) => {
     if(!selectedEnvId) return alert("Please select a folder first!");
     setS(s => ({
@@ -431,8 +403,6 @@ function Expenses({ S, setS }) {
 
   return (
     <div className="animate-grow max-w-4xl mx-auto space-y-6">
-      
-      {/* BANK INBOX SECTION */}
       {S.syncMode === "auto" && (
         <div className="glass p-6 rounded-3xl border-2 border-primary/20">
           <h3 className="font-bold mb-4 text-xl text-primary"><i className="fas fa-inbox mr-2"></i>Bank Inbox (Needs Approval)</h3>
@@ -459,7 +429,6 @@ function Expenses({ S, setS }) {
         </div>
       )}
 
-      {/* MANUAL EXPENSE LOGGING SECTION */}
       <div className="glass p-6 rounded-3xl">
         <h3 className="font-bold mb-6 text-xl text-center"><i className="fas fa-receipt text-primary mr-2"></i>Log an Expense Manually</h3>
         <div className="space-y-4 max-w-lg mx-auto">
@@ -682,15 +651,12 @@ function AiHelper({ S }) {
     const text = q.trim(); 
     if (!text) return;
     
-    // Optimistically add user message
     setLog(l => [...l, { me: true, t: text }]);
     setQ("");
     setLoading(true);
 
     try {
       const token = localStorage.getItem(TOKEN_KEY);
-      
-      // Format context to send to backend
       const context = {
         income: S.income,
         totalSpent: totalSpent(S),
@@ -700,15 +666,11 @@ function AiHelper({ S }) {
 
       const res = await fetch(`${API_URL}/ai/ask`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ message: text, context })
       });
 
       const data = await res.json();
-      
       if (res.ok) {
         setLog(l => [...l, { me: false, t: data.reply }]);
       } else {
@@ -794,26 +756,97 @@ function Rewards({ S }) {
   );
 }
 
-// Auth Component
+// Auth Component (Now features premium loading and branding)
 function Login({ onLogin }) {
-  const [mode, setMode] = useState("login"), [username, setUsername] = useState(""), [password, setPassword] = useState(""), [err, setErr] = useState("");
+  const [mode, setMode] = useState("login");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [err, setErr] = useState("");
+  const [isLoadingScreen, setIsLoadingScreen] = useState(false);
+
   const submit = async () => {
-    const u = username.trim().toLowerCase(); if (!u || !password) { setErr("Enter username and password."); return; }
+    const u = username.trim().toLowerCase(); 
+    if (!u || !password) { setErr("Enter username and password."); return; }
+    
+    setErr("");
+    setIsLoadingScreen(true);
+    const startTime = Date.now();
+    
+    let successData = null;
+    let errorMsg = "";
+
     try {
       const res = await fetch(`${API_URL}/auth/${mode === "register" ? "register" : "login"}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: u, password }),
       });
       const data = await res.json();
-      if (!res.ok) { setErr(data.error || "Authentication failed."); return; }
-      localStorage.setItem(TOKEN_KEY, data.token); localStorage.setItem(SESSION_KEY, data.username); onLogin(data.username);
-    } catch (e) { setErr("Could not connect to server."); }
+      if (!res.ok) { 
+        errorMsg = data.error || "Authentication failed."; 
+      } else {
+        successData = data;
+      }
+    } catch (e) { 
+      errorMsg = "Could not connect to server."; 
+    }
+
+    // Ensure the premium loading screen runs for at least 4.5 seconds
+    const elapsed = Date.now() - startTime;
+    const remainingTime = Math.max(0, 4500 - elapsed);
+
+    setTimeout(() => {
+      if (errorMsg) {
+        setErr(errorMsg);
+        setIsLoadingScreen(false);
+      } else if (successData) {
+        localStorage.setItem(TOKEN_KEY, successData.token); 
+        localStorage.setItem(SESSION_KEY, successData.username); 
+        onLogin(successData.username);
+      }
+    }, remainingTime);
   };
+
+  if (isLoadingScreen) {
+    return (
+      <div className="fixed inset-0 bg-slate-50/90 dark:bg-darkBg/95 backdrop-blur-md z-50 flex flex-col items-center justify-between p-6">
+        <div className="flex-1 flex flex-col items-center justify-center animate-grow">
+          <div className="text-7xl mb-6 animate-pulse-slow">🌳</div>
+          <h1 className="text-4xl font-extrabold text-primary mb-6">My Money Tree</h1>
+          <div className="flex items-center gap-4 text-slate-600 dark:text-slate-300 font-bold text-lg bg-white/50 dark:bg-slate-800/50 py-3 px-6 rounded-full shadow-sm border border-slate-200 dark:border-slate-700">
+            <i className="fas fa-circle-notch fa-spin text-primary"></i> 
+            {mode === "login" ? "Accessing your wealth profile..." : "Planting your new seed..."}
+          </div>
+        </div>
+
+        {/* Premium Developer Credits Section */}
+        <div className="glass p-6 rounded-[2rem] w-full max-w-lg mb-8 shadow-2xl border-t-4 border-t-primary animate-grow">
+          <p className="text-center text-slate-400 font-bold uppercase tracking-widest text-[10px] mb-5">Built with ❤️ By</p>
+          <div className="space-y-5">
+            <div className="flex items-center gap-4 bg-slate-50/50 dark:bg-slate-800/50 p-3 rounded-2xl">
+              <div className="w-12 h-12 rounded-full bg-primary/20 text-primary flex items-center justify-center font-extrabold text-xl flex-shrink-0">K</div>
+              <div>
+                <p className="font-bold text-slate-800 dark:text-slate-100 text-sm">Kushal Kumar Guha</p>
+                <p className="text-xs text-slate-500 font-semibold mt-0.5">Backend Architecture • UI Design • AI Integration</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 bg-slate-50/50 dark:bg-slate-800/50 p-3 rounded-2xl">
+              <div className="w-12 h-12 rounded-full bg-primary/20 text-primary flex items-center justify-center font-extrabold text-xl flex-shrink-0">A</div>
+              <div>
+                <p className="font-bold text-slate-800 dark:text-slate-100 text-sm">Arpita Dam Nova</p>
+                <p className="text-xs text-slate-500 font-semibold mt-0.5">Frontend Features • Login Architecture • Interactive UI Components</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-slate-50 dark:bg-darkBg z-50 flex items-center justify-center p-4">
       <div className="glass p-8 sm:p-10 rounded-[2rem] max-w-md w-full text-center animate-grow shadow-2xl">
-        <div className="text-6xl mb-4 animate-bounce-slight">🌱</div>
-        <h1 className="text-3xl font-extrabold text-primary mb-2">GoalJar</h1>
-        <p className="text-slate-500 dark:text-slate-400 mb-8 font-semibold">{mode === "login" ? "Welcome back" : "Spend with a plan. Save with a goal."}</p>
+        <div className="text-6xl mb-4 animate-bounce-slight">🌳</div>
+        <h1 className="text-3xl font-extrabold text-primary mb-2">My Money Tree</h1>
+        <p className="text-slate-500 dark:text-slate-400 mb-8 font-semibold">{mode === "login" ? "Welcome back to your forest" : "Spend with a plan. Grow your wealth."}</p>
         <div className="space-y-4 mb-6">
           <div className="relative">
             <i className="fas fa-user absolute left-4 top-3.5 text-slate-400"></i>
@@ -874,18 +907,13 @@ function Dashboard({ username, onLogout }) {
     setS((s) => ({ ...s, income: num(inc), incomeDate: Date.now() }));
   };
 
-  // Sync Live Bank Balance & New Transactions
   const handleBankSync = async () => {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) return;
     setSyncingBank(true);
     try {
-      await fetch(`${API_URL}/plaid/balance`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      await fetch(`${API_URL}/plaid/sync`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await fetch(`${API_URL}/plaid/balance`, { headers: { Authorization: `Bearer ${token}` } });
+      await fetch(`${API_URL}/plaid/sync`, { headers: { Authorization: `Bearer ${token}` } });
       window.location.reload();
     } catch (err) {
       console.error(err);
@@ -906,33 +934,22 @@ function Dashboard({ username, onLogout }) {
       {/* Desktop Sidebar Nav */}
       <aside className="glass w-64 flex-shrink-0 border-r border-slate-200/50 dark:border-slate-700/50 hidden md:flex flex-col pt-4 z-30">
         <div className="px-6 pb-4 mb-2 border-b border-slate-200/50 dark:border-slate-700/50 flex items-center gap-3">
-          <span className="text-3xl">🌱</span>
-          <h1 className="font-bold text-2xl tracking-tight text-primary">GoalJar</h1>
+          <span className="text-3xl">🌳</span>
+          <h1 className="font-bold text-2xl tracking-tight text-primary">My Money Tree</h1>
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1 no-scrollbar">
           {TABS.map((t) => (
             <button
               key={t.id}
-              onClick={() => {
-                setPrefill(null);
-                setTab(t.id);
-              }}
+              onClick={() => { setPrefill(null); setTab(t.id); }}
               className={`w-full flex items-center px-4 py-3 rounded-2xl transition-all duration-200 font-semibold group ${
-                tab === t.id
-                  ? "bg-primary text-white shadow-md"
-                  : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                tab === t.id ? "bg-primary text-white shadow-md" : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
               }`}
             >
-              <i
-                className={`fas ${t.icon} w-6 text-center ${
-                  tab === t.id ? "text-white" : "text-slate-400 group-hover:text-primary"
-                }`}
-              ></i>
+              <i className={`fas ${t.icon} w-6 text-center ${tab === t.id ? "text-white" : "text-slate-400 group-hover:text-primary"}`}></i>
               <span className="ml-3">{t.label}</span>
               {t.id === "exp" && S.bankInbox && S.bankInbox.length > 0 && (
-                <span className="ml-auto bg-red-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full">
-                  {S.bankInbox.length}
-                </span>
+                <span className="ml-auto bg-red-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full">{S.bankInbox.length}</span>
               )}
             </button>
           ))}
@@ -943,8 +960,8 @@ function Dashboard({ username, onLogout }) {
         {/* Header */}
         <header className="glass sticky top-0 z-40 px-4 md:px-8 py-3 flex justify-between items-center border-b border-slate-200/50 dark:border-slate-700/50 bg-white/70 dark:bg-slate-900/70">
           <div className="flex items-center gap-3 md:hidden">
-            <span className="text-2xl">🌱</span>
-            <h1 className="font-bold text-xl tracking-tight text-primary">GoalJar</h1>
+            <span className="text-2xl">🌳</span>
+            <h1 className="font-bold text-xl tracking-tight text-primary">My Money Tree</h1>
           </div>
           <div className="hidden md:flex items-center text-sm font-bold text-slate-400">
             Welcome, {username}
@@ -954,13 +971,8 @@ function Dashboard({ username, onLogout }) {
               <i className={`fas ${statusConfig.icon} mr-1.5`}></i> {statusConfig.text}
             </div>
 
-            {/* Auto vs Manual Header Button */}
             {S.syncMode === "auto" ? (
-              <button
-                onClick={handleBankSync}
-                disabled={syncingBank}
-                className="btn-outline py-1.5 px-3 text-xs bg-white dark:bg-slate-800 flex items-center gap-2 border-primary/40 text-primary"
-              >
+              <button onClick={handleBankSync} disabled={syncingBank} className="btn-outline py-1.5 px-3 text-xs bg-white dark:bg-slate-800 flex items-center gap-2 border-primary/40 text-primary">
                 <i className={`fas fa-sync-alt ${syncingBank ? "fa-spin" : ""}`}></i>
                 <span>{syncingBank ? "Syncing..." : "Sync Bank"}</span>
               </button>
@@ -968,10 +980,7 @@ function Dashboard({ username, onLogout }) {
               <PlaidBtn />
             )}
 
-            <button
-              onClick={toggleTheme}
-              className="w-10 h-10 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition flex items-center justify-center text-slate-500"
-            >
+            <button onClick={toggleTheme} className="w-10 h-10 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition flex items-center justify-center text-slate-500">
               <i className="fas fa-moon dark:hidden text-lg"></i>
               <i className="fas fa-sun hidden dark:block text-yellow-400 text-lg"></i>
             </button>
@@ -991,10 +1000,7 @@ function Dashboard({ username, onLogout }) {
           {TABS.map((t) => (
             <button
               key={t.id}
-              onClick={() => {
-                setPrefill(null);
-                setTab(t.id);
-              }}
+              onClick={() => { setPrefill(null); setTab(t.id); }}
               className={`flex-col justify-center min-w-[70px] px-2 py-2 rounded-xl text-center transition-all ${
                 tab === t.id ? "bg-primary text-white shadow-md" : "text-slate-500 dark:text-slate-400"
               }`}
@@ -1007,87 +1013,42 @@ function Dashboard({ username, onLogout }) {
 
         {/* Main Scrollable Content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-8 relative">
-          {/* STICKY OVERVIEW MODULE */}
           <section className="glass p-5 md:p-6 rounded-3xl sticky top-0 z-20 shadow-sm mb-6 bg-white/80 dark:bg-slate-800/80 border border-slate-200/50 dark:border-slate-700/50">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2 flex flex-col justify-center">
-                <h2 className="text-slate-500 dark:text-slate-400 font-bold mb-1 tracking-wide uppercase text-xs">
-                  Money left this month
-                </h2>
-                <div
-                  className={`text-4xl md:text-5xl font-extrabold mb-4 ${
-                    left < 0 ? "text-red-500" : "text-slate-800 dark:text-white"
-                  }`}
-                >
-                  {tk(left)}
-                </div>
+                <h2 className="text-slate-500 dark:text-slate-400 font-bold mb-1 tracking-wide uppercase text-xs">Money left this month</h2>
+                <div className={`text-4xl md:text-5xl font-extrabold mb-4 ${left < 0 ? "text-red-500" : "text-slate-800 dark:text-white"}`}>{tk(left)}</div>
                 <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-3 mb-2 overflow-hidden">
-                  <div
-                    className={`h-3 rounded-full transition-all duration-500 ${
-                      left < 0 ? "bg-red-500" : "bg-primary"
-                    }`}
-                    style={{
-                      width: `${
-                        S.income > 0 ? Math.max(0, Math.min(100, (totalSpent(S) / S.income) * 100)) : 0
-                      }%`,
-                    }}
-                  ></div>
+                  <div className={`h-3 rounded-full transition-all duration-500 ${left < 0 ? "bg-red-500" : "bg-primary"}`} style={{ width: `${S.income > 0 ? Math.max(0, Math.min(100, (totalSpent(S) / S.income) * 100)) : 0}%` }}></div>
                 </div>
                 <div className="flex justify-between text-xs text-slate-500 font-bold uppercase">
-                  <span>{Math.round(S.income > 0 ? (totalSpent(S) / S.income) * 100 : 0)}% Spent</span>
-                  <span>100%</span>
+                  <span>{Math.round(S.income > 0 ? (totalSpent(S) / S.income) * 100 : 0)}% Spent</span><span>100%</span>
                 </div>
               </div>
-
-              {/* Stats & Income (Automatic vs Manual) */}
               <div className="flex flex-col gap-4 justify-center bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-700/50">
                 <div className="flex justify-between items-end">
-                  <div>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">
-                      {S.syncMode === "auto" ? "Bank Balance" : "Total Income"}
-                    </p>
-                    <p className="text-lg font-bold text-primary">{tk(S.income)}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">Total Spent</p>
-                    <p className="text-lg font-bold text-red-500">{tk(totalSpent(S))}</p>
-                  </div>
+                  <div><p className="text-[10px] text-slate-400 font-bold uppercase">{S.syncMode === "auto" ? "Bank Balance" : "Total Income"}</p><p className="text-lg font-bold text-primary">{tk(S.income)}</p></div>
+                  <div className="text-right"><p className="text-[10px] text-slate-400 font-bold uppercase">Total Spent</p><p className="text-lg font-bold text-red-500">{tk(totalSpent(S))}</p></div>
                 </div>
                 <hr className="border-slate-200 dark:border-slate-700" />
-
                 {S.syncMode === "auto" ? (
                   <div className="flex items-center justify-between bg-primary/10 px-3 py-2 rounded-xl border border-primary/20 text-primary">
-                    <div className="flex items-center gap-2">
-                      <i className="fas fa-university"></i>
-                      <span className="text-xs font-bold">{S.plaidInstName || "Linked Bank"}</span>
-                    </div>
-                    <span className="text-[10px] font-semibold bg-primary text-white px-2 py-0.5 rounded-full">
-                      Auto
-                    </span>
+                    <div className="flex items-center gap-2"><i className="fas fa-university"></i><span className="text-xs font-bold">{S.plaidInstName || "Linked Bank"}</span></div>
+                    <span className="text-[10px] font-semibold bg-primary text-white px-2 py-0.5 rounded-full">Auto</span>
                   </div>
                 ) : (
                   <div className="flex gap-2">
                     <div className="relative flex-1">
                       <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-sm">৳</span>
-                      <input
-                        type="number"
-                        min="0"
-                        value={inc}
-                        onChange={(e) => setInc(e.target.value)}
-                        className="app-input pl-7 py-2 text-sm font-bold"
-                        placeholder="Income"
-                      />
+                      <input type="number" min="0" value={inc} onChange={(e) => setInc(e.target.value)} className="app-input pl-7 py-2 text-sm font-bold" placeholder="Income" />
                     </div>
-                    <button onClick={saveIncome} className="btn-primary py-2 px-4 rounded-xl">
-                      <i className="fas fa-check"></i>
-                    </button>
+                    <button onClick={saveIncome} className="btn-primary py-2 px-4 rounded-xl"><i className="fas fa-check"></i></button>
                   </div>
                 )}
               </div>
             </div>
           </section>
 
-          {/* DYNAMIC TAB CONTENT */}
           <div className="pb-10">
             {tab === "dashboard" && <DashboardHome S={S} setTab={setTab} />}
             {tab === "env" && <Envelopes S={S} setS={setS} />}
