@@ -1,0 +1,1117 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GoalJar - Smart Budgeting</title>
+<!-- Tailwind & Fonts -->
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<!-- Chart.js & Plaid -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        fontFamily: { sans: ['Nunito', 'sans-serif'] },
+        colors: {
+          primary: '#10b981', 
+          primaryDark: '#059669',
+          darkBg: '#0f172a', 
+          darkCard: '#1e293b', 
+        },
+        animation: {
+          'bounce-slight': 'bounce-slight 2s infinite',
+          'grow': 'grow 0.4s ease-out forwards',
+        },
+        keyframes: {
+          'bounce-slight': {
+            '0%, 100%': { transform: 'translateY(-2%)' },
+            '50%': { transform: 'translateY(0)' },
+          },
+          'grow': {
+            '0%': { transform: 'scale(0.95)', opacity: '0' },
+            '100%': { transform: 'scale(1)', opacity: '1' },
+          }
+        }
+      }
+    }
+  }
+</script>
+<style>
+  body { font-family: 'Nunito', sans-serif; transition: background-color 0.3s, color 0.3s; }
+  
+  .glass {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.05);
+  }
+  .dark .glass {
+    background: rgba(30, 41, 59, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+  }
+  
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+  .dark ::-webkit-scrollbar-thumb { background: #475569; }
+
+  .app-input {
+    width: 100%; padding: 0.75rem 1rem; border-radius: 1rem;
+    background: #f1f5f9; border: 2px solid transparent;
+    transition: all 0.2s; outline: none;
+  }
+  .dark .app-input { background: #0f172a; color: white; border-color: #334155; }
+  .app-input:focus { border-color: #10b981; background: white; }
+  .dark .app-input:focus { background: #1e293b; }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: white; padding: 0.75rem 1.5rem; border-radius: 1rem;
+    font-weight: bold; transition: transform 0.1s, box-shadow 0.2s;
+    box-shadow: 0 4px 14px 0 rgba(16, 185, 129, 0.3); border: none; cursor: pointer;
+  }
+  .btn-primary:active { transform: scale(0.96); }
+  .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  .btn-outline {
+    background: transparent; border: 1px solid #cbd5e1; color: #64748b;
+    padding: 0.5rem 1rem; border-radius: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;
+  }
+  .dark .btn-outline { border-color: #475569; color: #94a3b8; }
+  .btn-outline:hover { background: #f1f5f9; }
+  .dark .btn-outline:hover { background: #1e293b; }
+
+  .plant-stage { font-size: 5rem; text-align: center; filter: drop-shadow(0 10px 8px rgb(0 0 0 / 0.1)); cursor: pointer; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800 dark:bg-darkBg dark:text-slate-100 h-screen flex flex-col overflow-hidden">
+<div id="root" class="h-full"></div>
+
+<!-- React & Babel -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+const API_URL = "http://localhost:5000/api";
+const TOKEN_KEY = "goaljar.token.v1";
+const SESSION_KEY = "goaljar.session.v1";
+
+const tk = (n) => "৳" + Math.round(n).toLocaleString("en-IN");
+const uid = () => Math.random().toString(36).slice(2, 9);
+const num = (v) => { const x = parseFloat(v); return x > 0 ? x : 0; };
+const spent = (S, id) => S.exp.filter((x) => x.env === id).reduce((a, x) => a + x.amt, 0);
+const totalSpent = (S) => S.exp.reduce((a, x) => a + x.amt, 0);
+const savedTotal = (S) => S.goals.reduce((a, g) => a + g.saved, 0);
+
+function verdict(S, price, envId) {
+  const e = S.envs.find((v) => v.id === envId);
+  const total = S.income - totalSpent(S);
+  const after = (e ? e.limit - spent(S, e.id) : 0) - price;
+  const goalLeft = S.goals.reduce((a, g) => a + Math.max(0, g.target - g.saved), 0);
+  let cls, msg;
+  if (price > total) { cls = "bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 border-red-200 dark:border-red-800"; msg = `Not now. This is more than the ${tk(total)} you have left this month.`; }
+  else if (after < 0) { cls = "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800"; msg = `You have the money, but it puts ${e ? e.name : "this folder"} over budget by ${tk(-after)}.`; }
+  else { cls = "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 border-green-200 dark:border-green-800"; msg = `You can afford this. ${e ? e.name : "Folder"} drops to ${tk(after)} and your month to ${tk(total - price)}.`; }
+  if (goalLeft > 0 && after >= 0) msg += ` You still need ${tk(goalLeft)} across your savings goals.`;
+  return { cls, msg };
+}
+
+function advise(S, q) {
+  const m = q.replace(/,/g, "").match(/\d+/), total = S.income - totalSpent(S), sp = totalSpent(S);
+  if (m) {
+    const p = +m[0];
+    if (!S.income) return "Set your monthly income first.";
+    if (p > total) return `Not now. ${tk(p)} is more than the ${tk(total)} you have left.`;
+    return `You can afford it, but only ${tk(total - p)} would be left this month. Consider adding it to your wishlist for 48 hours first.`;
+  }
+  if (!sp) return "Add a few expenses first, then I can find patterns.";
+  const top = [...S.envs].sort((a, b) => spent(S, b.id) - spent(S, a.id))[0], t = spent(S, top.id);
+  let r = `**${top.name}** is your biggest spend: ${tk(t)} (${Math.round((t / sp) * 100)}% of spending). Cutting 10% would free ${tk(t * 0.1)} for savings.`;
+  const o = S.envs.filter((e) => spent(S, e.id) > e.limit);
+  if (o.length) r += ` \n\n⚠️ Over budget: ${o.map((e) => e.name).join(", ")}.`;
+  return r;
+}
+
+// Data Hook
+function useStore(username) {
+  const [S, setS] = useState({ income: 0, incomeDate: null, envs: [], exp: [], goals: [], wish: [] });
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [syncStatus, setSyncStatus] = useState("loading");
+
+  useEffect(() => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return;
+    setSyncStatus("loading");
+    fetch(`${API_URL}/budget`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => {
+        if (res.status === 401) { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(SESSION_KEY); window.location.reload(); return null; }
+        return res.json();
+      })
+      .then((data) => {
+        if (!data) return;
+        setS({
+          income: data.income || 0,
+          incomeDate: data.incomeDate || null,
+          envs: data.envs || [],
+          exp: data.exp || [],
+          goals: data.goals || [],
+          wish: data.wish || [],
+          syncMode: data.syncMode || "manual", // NEW
+          bankInbox: data.bankInbox || [],     // NEW
+        });
+        setIsLoaded(true); setSyncStatus("saved");
+      }).catch(() => setSyncStatus("error"));
+  }, [username]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return;
+    setSyncStatus("saving");
+    const timer = setTimeout(() => {
+      fetch(`${API_URL}/budget`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(S),
+      }).then((res) => { if (res.ok) setSyncStatus("saved"); else setSyncStatus("error"); })
+        .catch(() => setSyncStatus("error"));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [S, isLoaded]);
+
+  return [S, setS, syncStatus];
+}
+
+// UI Components
+function PlaidBtn() {
+  const [loading, setLoading] = useState(false);
+
+  const connect = async () => {
+    setLoading(true);
+    try {
+      // ১. লোকাল স্টোরেজ থেকে ইউজারের লগইন টোকেনটি বের করে আনা হচ্ছে
+      const token = localStorage.getItem(TOKEN_KEY);
+
+      // ২. টোকেনসহ ব্যাকএন্ডে রিকোয়েস্ট পাঠানো হচ্ছে
+      const res = await fetch(`${API_URL}/plaid/create-link-token`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}` // টোকেন পাঠানো হলো
+        }
+      });
+      const data = await res.json();
+
+      if (!data.link_token) {
+        alert("Failed to get link token. Check backend console and .env keys.");
+        setLoading(false);
+        return;
+      }
+
+      const handler = window.Plaid.create({
+        token: data.link_token,
+        onSuccess: async (public_token) => {
+          // 1. Exchange Token
+          await fetch(`${API_URL}/plaid/exchange-public-token`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+            body: JSON.stringify({ public_token }),
+          });
+          
+          // 2. Fetch Live Balance
+          await fetch(`${API_URL}/plaid/balance`, { headers: { "Authorization": `Bearer ${token}` } });
+          
+          // 3. Sync initial transactions
+          await fetch(`${API_URL}/plaid/sync`, { headers: { "Authorization": `Bearer ${token}` } });
+          
+          alert("Bank linked successfully! Refreshing dashboard...");
+          window.location.reload(); // রিলোড হয়ে নতুন ব্যালেন্স দেখাবে
+        },
+        onExit: () => setLoading(false),
+      });
+
+      handler.open();
+    } catch (err) {
+      console.error(err);
+      alert("Could not reach backend server at " + API_URL);
+      setLoading(false);
+    }
+  };
+
+  return (
+    <button className="btn-primary py-1 px-3 text-sm flex items-center gap-2" onClick={connect} disabled={loading}>
+      <i className={`fas ${loading ? 'fa-spinner fa-spin' : 'fa-link'}`}></i> <span className="hidden sm:inline">Link Bank</span>
+    </button>
+  );
+}
+
+// Chart Component for Dashboard Tab
+function SpendingChart({ S }) {
+  const canvasRef = useRef(null);
+  const chartInstance = useRef(null);
+
+  useEffect(() => {
+    if (!canvasRef.current || S.envs.length === 0) return;
+    const ctx = canvasRef.current.getContext('2d');
+    const isDark = document.documentElement.classList.contains('dark');
+    
+    if (chartInstance.current) chartInstance.current.destroy();
+
+    const labels = S.envs.map(e => e.name);
+    const limits = S.envs.map(e => e.limit);
+    const sp = S.envs.map(e => spent(S, e.id));
+    const textColor = isDark ? '#94a3b8' : '#64748b';
+    const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+
+    chartInstance.current = new window.Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Limit', data: limits, backgroundColor: isDark ? '#334155' : '#e2e8f0', borderRadius: 4, barPercentage: 0.8 },
+          { label: 'Spent', data: sp, backgroundColor: sp.map((v, i) => v > limits[i] ? '#ef4444' : '#10b981'), borderRadius: 4, barPercentage: 0.6, xAxisID: 'x' }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { color: textColor, usePointStyle: true } } },
+        scales: {
+          x: { stacked: true, grid: { display: false }, ticks: { color: textColor } },
+          y: { beginAtZero: true, grid: { color: gridColor }, ticks: { color: textColor } }
+        }
+      }
+    });
+
+    return () => { if (chartInstance.current) chartInstance.current.destroy(); };
+  }, [S]);
+
+  if (S.envs.length === 0) return <div className="text-center p-8 text-slate-400">Add folders to see your chart!</div>;
+  return <div className="w-full h-64 md:h-72"><canvas ref={canvasRef}></canvas></div>;
+}
+
+// Tabs Content
+function DashboardHome({ S, setTab }) {
+  const over = S.envs.filter((e) => spent(S, e.id) > e.limit);
+  const recent = [...S.exp].reverse().slice(0, 4);
+  
+  return (
+    <div className="space-y-6 animate-grow">
+      <div className="flex flex-wrap gap-3">
+        <button onClick={() => setTab('exp')} className="btn-primary flex-1 min-w-[140px]"><i className="fas fa-plus mr-2"></i>Log Expense</button>
+        <button onClick={() => setTab('env')} className="btn-outline flex-1 min-w-[140px] bg-white dark:bg-slate-800"><i className="fas fa-folder-plus mr-2"></i>Manage Folders</button>
+        <button onClick={() => setTab('aff')} className="btn-outline flex-1 min-w-[140px] bg-white dark:bg-slate-800"><i className="fas fa-question-circle mr-2"></i>Can I Buy It?</button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="glass p-5 rounded-3xl lg:col-span-2 shadow-sm border border-slate-200/50 dark:border-slate-700/50">
+          <h3 className="font-bold mb-4 text-lg"><i className="fas fa-chart-pie mr-2 text-primary"></i>Spending vs Limits</h3>
+          <SpendingChart S={S} />
+        </div>
+        
+        <div className="space-y-6">
+          <div className="glass p-5 rounded-3xl shadow-sm border border-slate-200/50 dark:border-slate-700/50">
+            <h3 className="font-bold mb-3 text-lg"><i className="fas fa-history mr-2 text-slate-400"></i>Recent</h3>
+            {!recent.length ? <div className="text-sm text-slate-400">No expenses yet.</div> : (
+              <div className="space-y-3">
+                {recent.map((x) => {
+                  const e = S.envs.find((v) => v.id === x.env);
+                  return (
+                    <div key={x.id} className="flex justify-between items-center text-sm border-b border-slate-100 dark:border-slate-800 pb-2 last:border-0 last:pb-0">
+                      <div>
+                        <div className="font-bold">{x.note || 'Expense'}</div>
+                        <div className="text-xs text-slate-500">{e ? e.name : "Removed"}</div>
+                      </div>
+                      <div className="font-bold text-red-500">-{tk(x.amt)}</div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            <button onClick={() => setTab('tx')} className="w-full mt-3 text-xs font-bold text-primary hover:underline">View All</button>
+          </div>
+
+          {over.length > 0 && (
+            <div className="glass p-5 rounded-3xl bg-red-50/50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30">
+              <h3 className="font-bold mb-3 text-red-500"><i className="fas fa-exclamation-triangle mr-2"></i>Over Budget</h3>
+              <ul className="space-y-2">
+                {over.map(f => (
+                  <li key={f.id} className="text-sm flex justify-between">
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">{f.name}</span>
+                    <span className="text-red-600 font-bold">+{tk(spent(S, f.id) - f.limit)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Envelopes({ S, setS }) {
+  const [name, setName] = useState(""), [lim, setLim] = useState("");
+  const add = () => {
+    if (!name.trim()) return;
+    setS(s => ({ ...s, envs: [...s.envs, { id: uid(), name: name.trim(), limit: num(lim) }] }));
+    setName(""); setLim("");
+  };
+  const setLimit = (id, v) => setS(s => ({ ...s, envs: s.envs.map(e => (e.id === id ? { ...e, limit: num(v) } : e)) }));
+  const del = (id) => setS(s => ({ ...s, envs: s.envs.filter(e => e.id !== id) }));
+  
+  return (
+    <div className="animate-grow space-y-6">
+      <div className="glass p-5 rounded-3xl">
+        <h3 className="font-bold mb-3 text-lg"><i className="fas fa-folder-plus text-primary mr-2"></i>Create a new folder</h3>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <input value={name} onChange={e => setName(e.target.value)} className="app-input flex-1" placeholder="e.g., Snacks, Games" />
+          <div className="relative flex-1">
+            <span className="absolute left-3 top-3 text-slate-400">৳</span>
+            <input type="number" min="0" value={lim} onChange={e => setLim(e.target.value)} className="app-input pl-8" placeholder="Monthly Limit" />
+          </div>
+          <button className="btn-primary whitespace-nowrap" onClick={add}>Add Folder</button>
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {S.envs.map((e) => {
+          const s = spent(S, e.id), r = e.limit - s, pct = e.limit > 0 ? Math.min(100, (s / e.limit) * 100) : (s > 0 ? 100 : 0);
+          const isOver = r < 0, pColor = pct > 85 ? (isOver ? 'bg-red-500' : 'bg-yellow-400') : 'bg-primary';
+          return (
+            <div className="glass p-5 rounded-3xl relative group" key={e.id}>
+              <button onClick={() => del(e.id)} className="absolute top-4 right-4 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition"><i className="fas fa-trash"></i></button>
+              <h3 className="font-bold text-lg mb-1">{e.name}</h3>
+              <div className="flex justify-between text-sm mb-3">
+                <span className="text-slate-500">Limit: {tk(e.limit)}</span>
+                <span className={`font-bold ${isOver ? 'text-red-500' : 'text-primary'}`}>{isOver ? 'Over by ' + tk(-r) : 'Left: ' + tk(r)}</span>
+              </div>
+              <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 mb-4">
+                <div className={`${pColor} h-2 rounded-full transition-all duration-500`} style={{ width: `${pct}%` }}></div>
+              </div>
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-xs text-slate-400">Edit limit:</span>
+                <input type="number" min="0" defaultValue={e.limit} onBlur={ev => setLimit(e.id, ev.target.value)} className="app-input py-1 px-2 text-sm w-24 text-right" />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Expenses({ S, setS }) {
+  const [env, setEnv] = useState(S.envs[0]?.id || ""), [amt, setAmt] = useState(""), [note, setNote] = useState("");
+  const add = () => {
+    const a = num(amt); if (!a || !S.envs.length) return;
+    setS(s => ({ ...s, exp: [...s.exp, { id: uid(), env: env || s.envs[0].id, amt: a, note: note.trim(), t: Date.now() }] }));
+    setAmt(""); setNote("");
+  };
+
+  // NEW: Approve Bank Transaction
+  const approveTx = (tx, selectedEnvId) => {
+    if(!selectedEnvId) return alert("Please select a folder first!");
+    setS(s => ({
+      ...s,
+      exp: [...s.exp, { id: tx.transaction_id, env: selectedEnvId, amt: tx.amount, note: tx.name, t: new Date(tx.date).getTime() }],
+      bankInbox: s.bankInbox.filter(item => item.transaction_id !== tx.transaction_id)
+    }));
+  };
+
+  return (
+    <div className="animate-grow max-w-4xl mx-auto space-y-6">
+      
+      {/* BANK INBOX SECTION */}
+      {S.syncMode === "auto" && (
+        <div className="glass p-6 rounded-3xl border-2 border-primary/20">
+          <h3 className="font-bold mb-4 text-xl text-primary"><i className="fas fa-inbox mr-2"></i>Bank Inbox (Needs Approval)</h3>
+          {!S.bankInbox.length ? (
+             <div className="text-sm text-slate-500 font-bold">No new bank transactions. You are all caught up!</div>
+          ) : (
+            <div className="space-y-3">
+              {S.bankInbox.map(tx => (
+                <div key={tx.transaction_id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+                  <div className="mb-3 sm:mb-0">
+                    <p className="font-bold text-lg">{tx.name}</p>
+                    <p className="text-sm font-semibold text-red-500">-{tk(tx.amount)} <span className="text-slate-400 font-normal ml-2">{tx.date}</span></p>
+                  </div>
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <select id={`env-${tx.transaction_id}`} className="app-input py-2 text-sm flex-1 sm:w-40 appearance-none font-bold">
+                      {S.envs.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                    </select>
+                    <button onClick={() => approveTx(tx, document.getElementById(`env-${tx.transaction_id}`).value)} className="btn-primary py-2 px-4 text-sm">Approve</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* MANUAL EXPENSE LOGGING SECTION */}
+      <div className="glass p-6 rounded-3xl">
+        <h3 className="font-bold mb-6 text-xl text-center"><i className="fas fa-receipt text-primary mr-2"></i>Log an Expense Manually</h3>
+        <div className="space-y-4 max-w-lg mx-auto">
+          <div>
+            <label className="block text-sm font-semibold mb-1 text-slate-500">How much?</label>
+            <div className="relative">
+              <span className="absolute left-3 top-3 text-slate-400">৳</span>
+              <input type="number" min="0" value={amt} onChange={e => setAmt(e.target.value)} className="app-input pl-8 text-xl font-bold text-red-500" placeholder="0.00" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold mb-1 text-slate-500">Which Folder?</label>
+            <select value={env} onChange={e => setEnv(e.target.value)} className="app-input appearance-none">
+              {S.envs.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold mb-1 text-slate-500">What was it? (Optional)</label>
+            <input value={note} onChange={e => setNote(e.target.value)} className="app-input" placeholder="e.g., Movie ticket" />
+          </div>
+          <button onClick={add} className="btn-primary w-full mt-4 py-3 text-lg">Spend Money</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Transactions({ S }) {
+  const [filter, setFilter] = useState("all"), [q, setQ] = useState("");
+  const rows = [];
+  if (S.income > 0) rows.push({ id: "income", type: "income", amount: S.income, category: "Income", note: "Monthly income", t: S.incomeDate || Date.now() });
+  S.exp.forEach(x => { const e = S.envs.find(v => v.id === x.env); rows.push({ id: "e-" + x.id, type: "expense", amount: x.amt, category: e ? e.name : "Removed", note: x.note || "Expense", t: x.t }); });
+  S.goals.forEach(g => { if (g.saved > 0) rows.push({ id: "g-" + g.id, type: "saving", amount: g.saved, category: "Savings", note: g.name, t: g.updatedAt || Date.now() }); });
+  const search = q.trim().toLowerCase();
+  const filtered = rows.filter(x => (filter === "all" || x.type === filter) && (!search || (x.note + " " + x.category).toLowerCase().includes(search))).sort((a,b) => b.t - a.t);
+  
+  return (
+    <div className="animate-grow space-y-4">
+      <div className="glass p-4 rounded-2xl flex flex-col sm:flex-row gap-3 items-center">
+        <div className="relative flex-1 w-full">
+          <i className="fas fa-search absolute left-3 top-3.5 text-slate-400"></i>
+          <input value={q} onChange={e => setQ(e.target.value)} className="app-input pl-9" placeholder="Search transactions..." />
+        </div>
+        <select value={filter} onChange={e => setFilter(e.target.value)} className="app-input sm:w-48 appearance-none">
+          <option value="all">All Types</option><option value="income">Income</option><option value="expense">Expenses</option><option value="saving">Savings</option>
+        </select>
+      </div>
+      <div className="glass rounded-3xl overflow-hidden shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-100/50 dark:bg-slate-800/50 text-slate-500 text-sm border-b border-slate-200 dark:border-slate-700">
+                <th className="p-4 font-semibold">Date</th>
+                <th className="p-4 font-semibold">Details</th>
+                <th className="p-4 font-semibold">Category</th>
+                <th className="p-4 font-semibold text-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
+              {!filtered.length && <tr><td colSpan="4" className="p-8 text-center text-slate-400">No transactions found.</td></tr>}
+              {filtered.map(x => (
+                <tr key={x.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition">
+                  <td className="p-4 text-sm text-slate-500 whitespace-nowrap">{new Date(x.t).toLocaleDateString()}</td>
+                  <td className="p-4 font-medium">{x.note}</td>
+                  <td className="p-4"><span className="text-xs px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-300">{x.category}</span></td>
+                  <td className={`p-4 text-right font-bold ${x.type === 'expense' ? 'text-red-500' : 'text-primary'}`}>
+                    {x.type === "expense" ? "-" : "+"}{tk(x.amount)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Afford({ S, prefill }) {
+  const [price, setPrice] = useState(prefill?.price || ""), [env, setEnv] = useState(S.envs[0]?.id || "");
+  const [res, setRes] = useState(prefill ? verdict(S, prefill.price, S.envs[0]?.id) : null);
+  const check = () => { const p = num(price); setRes(p ? verdict(S, p, env) : { cls: "bg-slate-100 text-slate-500", msg: "Enter a price first." }); };
+  
+  return (
+    <div className="animate-grow glass p-6 sm:p-10 rounded-3xl max-w-2xl mx-auto text-center">
+      <div className="text-5xl mb-4">🤔</div>
+      <h2 className="text-2xl font-bold mb-2">Can I Afford It?</h2>
+      <p className="text-slate-500 mb-8">Want to buy something? Check if you have enough money in your folder first!</p>
+      <div className="flex flex-col sm:flex-row gap-4 mb-6 justify-center">
+        <div className="relative w-full sm:w-48 text-left">
+          <label className="block text-xs font-bold text-slate-400 mb-1 ml-1 uppercase">Item Price</label>
+          <span className="absolute left-3 top-8 text-slate-400">৳</span>
+          <input type="number" min="0" value={price} onChange={e => setPrice(e.target.value)} className="app-input pl-8 text-lg font-bold" placeholder="0.00" />
+        </div>
+        <div className="w-full sm:w-48 text-left">
+          <label className="block text-xs font-bold text-slate-400 mb-1 ml-1 uppercase">From Folder</label>
+          <select value={env} onChange={e => setEnv(e.target.value)} className="app-input text-lg appearance-none font-bold">
+            {S.envs.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+          </select>
+        </div>
+      </div>
+      <button onClick={check} className="btn-primary w-full sm:w-auto px-10 text-lg rounded-full">Check Now</button>
+      {res && <div className={`mt-8 p-6 rounded-2xl border transition-all animate-grow ${res.cls}`} dangerouslySetInnerHTML={{__html: res.msg}} />}
+    </div>
+  );
+}
+
+function Goals({ S, setS }) {
+  const [name, setName] = useState(""), [target, setTarget] = useState("");
+  const create = () => {
+    if (!name.trim() || !num(target)) return;
+    setS(s => ({ ...s, goals: [...s.goals, { id: uid(), name: name.trim(), target: num(target), saved: 0, updatedAt: Date.now() }] }));
+    setName(""); setTarget("");
+  };
+  return (
+    <div className="animate-grow space-y-6">
+      <div className="glass p-5 rounded-3xl">
+        <h3 className="font-bold mb-3 text-lg"><i className="fas fa-bullseye text-primary mr-2"></i>What are you saving for?</h3>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <input value={name} onChange={e => setName(e.target.value)} className="app-input flex-1" placeholder="e.g. Laptop, Skateboard" />
+          <div className="relative flex-1">
+            <span className="absolute left-3 top-3 text-slate-400">৳</span>
+            <input type="number" min="0" value={target} onChange={e => setTarget(e.target.value)} className="app-input pl-8" placeholder="Target Amount" />
+          </div>
+          <button onClick={create} className="btn-primary whitespace-nowrap">Create Goal</button>
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {!S.goals.length && <div className="col-span-full text-center p-8 text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-3xl">No goals set. Aim for something!</div>}
+        {S.goals.map((g) => {
+          const l = Math.max(0, g.target - g.saved), pct = Math.min(100, (g.saved / g.target) * 100), isReached = g.saved >= g.target;
+          const put = (v) => { if(!v) return; setS(s => ({...s, goals: s.goals.map(x => x.id === g.id ? {...x, saved: x.saved + v, updatedAt: Date.now()} : x)})); };
+          return (
+            <div key={g.id} className="glass p-6 rounded-3xl relative">
+              <button onClick={() => setS(s => ({...s, goals: s.goals.filter(x => x.id !== g.id)}))} className="absolute top-4 right-4 text-slate-300 hover:text-red-500 transition"><i className="fas fa-times"></i></button>
+              <div className="flex items-center gap-3 mb-4">
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center text-2xl ${isReached ? 'bg-yellow-400 text-white' : 'bg-primary/20 text-primary'}`}>
+                  <i className={`fas ${isReached ? 'fa-trophy' : 'fa-bullseye'}`}></i>
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg leading-tight">{g.name}</h3>
+                  <p className="text-sm text-slate-500 font-semibold">{tk(g.saved)} of {tk(g.target)}</p>
+                </div>
+              </div>
+              <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-3 mb-4 relative overflow-hidden">
+                <div className="bg-primary h-3 rounded-full transition-all duration-500" style={{ width: `${pct}%` }}></div>
+              </div>
+              {!isReached ? (
+                <div className="flex gap-2 items-center">
+                  <span className="text-xs font-bold text-slate-400 flex-1">{tk(l)} to go</span>
+                  <input type="number" min="0" placeholder="Add ৳" className="app-input py-1 px-2 text-sm w-24 text-center" onKeyDown={e => { if(e.key === 'Enter') { put(num(e.target.value)); e.target.value=''; } }} />
+                </div>
+              ) : (
+                <div className="text-center text-sm font-bold text-yellow-600 dark:text-yellow-400 bg-yellow-100 dark:bg-yellow-900/30 py-2 rounded-xl">Goal Reached! Awesome!</div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Wishlist({ S, setS, onCheck }) {
+  const [name, setName] = useState(""), [price, setPrice] = useState("");
+  const add = () => {
+    if (!name.trim() || !num(price)) return;
+    setS(s => ({ ...s, wish: [...s.wish, { id: uid(), name: name.trim(), price: num(price), t: Date.now() }] }));
+    setName(""); setPrice("");
+  };
+  return (
+    <div className="animate-grow space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold mb-2">Wishlist & Cool-down ⏳</h2>
+        <p className="text-slate-500">See something you want? Add it here and wait 48 hours. It helps stop impulse buying!</p>
+      </div>
+      <div className="glass p-5 rounded-3xl flex flex-col sm:flex-row gap-3">
+        <input value={name} onChange={e => setName(e.target.value)} className="app-input flex-1" placeholder="What do you want to buy?" />
+        <div className="relative w-full sm:w-48">
+          <span className="absolute left-3 top-3 text-slate-400">৳</span>
+          <input type="number" min="0" value={price} onChange={e => setPrice(e.target.value)} className="app-input pl-8" placeholder="Price" />
+        </div>
+        <button onClick={add} className="btn-primary whitespace-nowrap">Add to Wishlist</button>
+      </div>
+      <div className="space-y-4">
+        {!S.wish.length && <div className="text-center p-6 text-slate-400">Nothing waiting. Good sign.</div>}
+        {S.wish.map((w) => {
+          const ms = w.t + 48 * 36e5 - Date.now(), ready = ms <= 0, hrs = Math.ceil(ms / 36e5);
+          return (
+            <div key={w.id} className={`glass p-5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-l-4 ${ready ? 'border-primary' : 'border-slate-300 dark:border-slate-600'}`}>
+              <div>
+                <h4 className="font-bold text-lg">{w.name}</h4>
+                <p className="text-sm text-slate-500 font-semibold">{tk(w.price)}</p>
+              </div>
+              <div className="flex items-center gap-3 w-full sm:w-auto">
+                {!ready ? (
+                  <div className="text-sm font-semibold text-slate-500 flex items-center bg-slate-100 dark:bg-slate-800 px-4 py-2 rounded-full">
+                    <i className="fas fa-clock mr-2 animate-pulse"></i> Wait {hrs}h
+                  </div>
+                ) : (
+                  <button onClick={() => onCheck(w)} className="btn-primary py-2 px-6 text-sm flex-1 sm:flex-none">Buy Now?</button>
+                )}
+                <button onClick={() => setS(s => ({...s, wish: s.wish.filter(x => x.id !== w.id)}))} className="p-3 bg-white dark:bg-slate-800 rounded-xl text-slate-400 hover:text-red-500 transition"><i className="fas fa-trash"></i></button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function AiHelper({ S }) {
+  const [log, setLog] = useState([]), [q, setQ] = useState("");
+  const [loading, setLoading] = useState(false);
+  const endRef = useRef(null);
+
+  const ask = async () => {
+    const text = q.trim(); 
+    if (!text) return;
+    
+    // Optimistically add user message
+    setLog(l => [...l, { me: true, t: text }]);
+    setQ("");
+    setLoading(true);
+
+    try {
+      const token = localStorage.getItem(TOKEN_KEY);
+      
+      // Format context to send to backend
+      const context = {
+        income: S.income,
+        totalSpent: totalSpent(S),
+        folders: S.envs.map(f => `${f.name} (Limit: ${f.limit}, Spent: ${spent(S, f.id)})`).join(", "),
+        goals: S.goals.map(g => `${g.name} (Target: ${g.target}, Saved: ${g.saved})`).join(", ")
+      };
+
+      const res = await fetch(`${API_URL}/ai/ask`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ message: text, context })
+      });
+
+      const data = await res.json();
+      
+      if (res.ok) {
+        setLog(l => [...l, { me: false, t: data.reply }]);
+      } else {
+        setLog(l => [...l, { me: false, t: "Oops! I'm having trouble connecting to my brain right now." }]);
+      }
+    } catch (err) {
+      setLog(l => [...l, { me: false, t: "Network error. Please try again." }]);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [log]);
+  
+  return (
+    <div className="animate-grow h-[calc(100vh-250px)] min-h-[400px] flex flex-col">
+      <h2 className="text-2xl font-bold mb-4 flex-shrink-0">Money Mentor (AI) 🤖</h2>
+      <div className="glass rounded-3xl flex-1 flex flex-col overflow-hidden relative shadow-sm border border-slate-200/50 dark:border-slate-700/50">
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-full bg-primary/20 text-primary flex items-center justify-center flex-shrink-0"><i className="fas fa-robot"></i></div>
+            <div className="bg-white dark:bg-slate-800 rounded-2xl rounded-tl-none p-4 text-sm max-w-[85%] shadow-sm leading-relaxed">
+              Hi! Ask me: "Can I afford a 10000 headphone?" or "Where am I overspending?"
+            </div>
+          </div>
+          {log.map((m, i) => (
+            <div key={i} className={`flex items-start gap-3 ${m.me ? 'flex-row-reverse' : ''}`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${m.me ? 'bg-slate-200 dark:bg-slate-700 text-slate-500' : 'bg-primary/20 text-primary'}`}>
+                <i className={`fas ${m.me ? 'fa-user' : 'fa-robot'}`}></i>
+              </div>
+              <div className={`rounded-2xl p-4 text-sm max-w-[85%] shadow-sm leading-relaxed ${m.me ? 'bg-primary text-white rounded-tr-none' : 'bg-white dark:bg-slate-800 rounded-tl-none'}`} dangerouslySetInnerHTML={{__html: m.t.replace(/\n/g, '<br>')}} />
+            </div>
+          ))}
+          <div ref={endRef} />
+        </div>
+        <div className="p-4 bg-slate-50/80 dark:bg-slate-900/80 border-t border-slate-200 dark:border-slate-700 flex gap-2 flex-shrink-0">
+          <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && ask()} className="app-input flex-1 py-3" placeholder="Ask about saving, spending, or your budget..." />
+          <button onClick={ask} className="btn-primary py-3 px-5 rounded-xl"><i className="fas fa-paper-plane"></i></button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Rewards({ S }) {
+  const sv = savedTotal(S), over = S.envs.some((e) => spent(S, e.id) > e.limit), pts = S.exp.length * 5 + Math.floor(sv / 100);
+  const days = new Set(S.exp.map(x => new Date(x.t).toDateString()));
+  let st = 0; const d = new Date(); while (days.has(d.toDateString())) { st++; d.setDate(d.getDate() - 1); }
+  const plant = over ? "🥀" : sv >= 5000 ? "🌳" : sv >= 1000 ? "🌿" : pts > 20 ? "🪴" : "🌱";
+  const stateTxt = over ? "Wilted" : sv >= 5000 ? "Money Tree" : sv >= 1000 ? "Small Plant" : pts > 20 ? "Potted Plant" : "Sprout";
+  
+  const badges = [
+    {id: 1, name: 'Tracker', icon: 'fa-receipt', on: S.exp.length >= 1},
+    {id: 2, name: 'Saver', icon: 'fa-piggy-bank', on: sv > 0},
+    {id: 3, name: 'Keeper', icon: 'fa-shield-alt', on: S.exp.length >= 3 && !over},
+    {id: 4, name: 'Achiever', icon: 'fa-star', on: S.goals.some(g => g.saved >= g.target)},
+  ];
+
+  return (
+    <div className="animate-grow grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="glass p-8 rounded-3xl flex flex-col items-center justify-center min-h-[350px] bg-gradient-to-t from-primary/5 to-transparent relative overflow-hidden group">
+        <div className="plant-stage transition-transform duration-700 group-hover:scale-110">{plant}</div>
+        <h3 className="mt-6 font-bold text-2xl text-primary">{stateTxt}</h3>
+        <p className="text-sm text-slate-500 mt-2 text-center font-semibold max-w-[80%]">{over ? "Your plant wilted. Get back under budget to revive it." : "Keep staying under budget to grow your plant!"}</p>
+      </div>
+      <div className="space-y-6">
+        <div className="glass p-6 rounded-3xl flex items-center justify-between">
+          <div><p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Points</p><p className="text-5xl font-extrabold text-yellow-500">{pts}</p></div>
+          <div className="text-right"><p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Streak</p><p className="text-3xl font-bold text-orange-500"><i className="fas fa-fire mr-1"></i> {st}</p></div>
+        </div>
+        <div className="glass p-6 rounded-3xl">
+          <h3 className="font-bold mb-4 text-lg">Badges</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {badges.map(b => (
+              <div key={b.id} className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all ${b.on ? 'border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600 dark:text-yellow-400 scale-100' : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-400 grayscale opacity-50 scale-95'}`}>
+                <i className={`fas ${b.icon} text-2xl mb-2`}></i>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-center">{b.name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Auth Component
+function Login({ onLogin }) {
+  const [mode, setMode] = useState("login"), [username, setUsername] = useState(""), [password, setPassword] = useState(""), [err, setErr] = useState("");
+  const submit = async () => {
+    const u = username.trim().toLowerCase(); if (!u || !password) { setErr("Enter username and password."); return; }
+    try {
+      const res = await fetch(`${API_URL}/auth/${mode === "register" ? "register" : "login"}`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: u, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setErr(data.error || "Authentication failed."); return; }
+      localStorage.setItem(TOKEN_KEY, data.token); localStorage.setItem(SESSION_KEY, data.username); onLogin(data.username);
+    } catch (e) { setErr("Could not connect to server."); }
+  };
+  return (
+    <div className="fixed inset-0 bg-slate-50 dark:bg-darkBg z-50 flex items-center justify-center p-4">
+      <div className="glass p-8 sm:p-10 rounded-[2rem] max-w-md w-full text-center animate-grow shadow-2xl">
+        <div className="text-6xl mb-4 animate-bounce-slight">🌱</div>
+        <h1 className="text-3xl font-extrabold text-primary mb-2">GoalJar</h1>
+        <p className="text-slate-500 dark:text-slate-400 mb-8 font-semibold">{mode === "login" ? "Welcome back" : "Spend with a plan. Save with a goal."}</p>
+        <div className="space-y-4 mb-6">
+          <div className="relative">
+            <i className="fas fa-user absolute left-4 top-3.5 text-slate-400"></i>
+            <input value={username} onChange={e => { setUsername(e.target.value); setErr(""); }} className="app-input pl-11 py-3" placeholder="Username" />
+          </div>
+          <div className="relative">
+            <i className="fas fa-lock absolute left-4 top-3.5 text-slate-400"></i>
+            <input type="password" value={password} onChange={e => { setPassword(e.target.value); setErr(""); }} className="app-input pl-11 py-3" placeholder="Password" />
+          </div>
+          <button className="btn-primary w-full py-3 text-lg" onClick={submit}>{mode === "login" ? "Login" : "Register"}</button>
+        </div>
+        {err && <div className="text-red-500 text-sm font-bold bg-red-50 dark:bg-red-900/30 p-3 rounded-xl mb-4">{err}</div>}
+        <button className="text-sm font-bold text-slate-400 hover:text-primary transition" onClick={() => { setMode(mode === "login" ? "register" : "login"); setErr(""); }}>
+          {mode === "login" ? "Create a new account" : "I already have an account"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const TABS = [
+  { id: "dashboard", icon: "fa-chart-bar", label: "Dashboard" },
+  { id: "env", icon: "fa-folder-open", label: "Folders" },
+  { id: "exp", icon: "fa-receipt", label: "Expenses" },
+  { id: "tx", icon: "fa-history", label: "History" },
+  { id: "aff", icon: "fa-question-circle", label: "Buy Check" },
+  { id: "goal", icon: "fa-bullseye", label: "Goals" },
+  { id: "wish", icon: "fa-heart", label: "Wishlist" },
+  { id: "ai", icon: "fa-robot", label: "AI Helper" },
+  { id: "rew", icon: "fa-leaf", label: "Rewards" }
+];
+
+function Dashboard({ username, onLogout }) {
+  const [S, setS, syncStatus] = useStore(username);
+  const [tab, setTab] = useState("dashboard");
+  const [prefill, setPrefill] = useState(null);
+  const [inc, setInc] = useState(S.income || "");
+  const [syncingBank, setSyncingBank] = useState(false);
+  const left = S.income - totalSpent(S);
+
+  useEffect(() => {
+    setInc(S.income || "");
+  }, [S.income]);
+
+  const toggleTheme = () => {
+    const r = document.documentElement;
+    const dark = !r.classList.contains("dark");
+    if (dark) r.classList.add("dark");
+    else r.classList.remove("dark");
+  };
+
+  const checkWish = (w) => {
+    setPrefill({ price: w.price });
+    setTab("aff");
+  };
+
+  const saveIncome = () => {
+    setS((s) => ({ ...s, income: num(inc), incomeDate: Date.now() }));
+  };
+
+  // Sync Live Bank Balance & New Transactions
+  const handleBankSync = async () => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return;
+    setSyncingBank(true);
+    try {
+      await fetch(`${API_URL}/plaid/balance`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      await fetch(`${API_URL}/plaid/sync`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      window.location.reload();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to sync bank data. Please check backend connection.");
+      setSyncingBank(false);
+    }
+  };
+
+  const statusConfig = {
+    loading: { text: "Loading...", icon: "fa-spinner fa-spin", cls: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400" },
+    saving: { text: "Saving...", icon: "fa-circle-notch fa-spin", cls: "bg-yellow-100 text-yellow-600 dark:bg-yellow-900/50 dark:text-yellow-400" },
+    saved: { text: "Saved", icon: "fa-check", cls: "bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400" },
+    error: { text: "Offline", icon: "fa-cloud", cls: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400" },
+  }[syncStatus] || { text: "", icon: "", cls: "" };
+
+  return (
+    <div className="flex h-screen overflow-hidden">
+      {/* Desktop Sidebar Nav */}
+      <aside className="glass w-64 flex-shrink-0 border-r border-slate-200/50 dark:border-slate-700/50 hidden md:flex flex-col pt-4 z-30">
+        <div className="px-6 pb-4 mb-2 border-b border-slate-200/50 dark:border-slate-700/50 flex items-center gap-3">
+          <span className="text-3xl">🌱</span>
+          <h1 className="font-bold text-2xl tracking-tight text-primary">GoalJar</h1>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1 no-scrollbar">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => {
+                setPrefill(null);
+                setTab(t.id);
+              }}
+              className={`w-full flex items-center px-4 py-3 rounded-2xl transition-all duration-200 font-semibold group ${
+                tab === t.id
+                  ? "bg-primary text-white shadow-md"
+                  : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+              }`}
+            >
+              <i
+                className={`fas ${t.icon} w-6 text-center ${
+                  tab === t.id ? "text-white" : "text-slate-400 group-hover:text-primary"
+                }`}
+              ></i>
+              <span className="ml-3">{t.label}</span>
+              {t.id === "exp" && S.bankInbox && S.bankInbox.length > 0 && (
+                <span className="ml-auto bg-red-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full">
+                  {S.bankInbox.length}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </aside>
+
+      <div className="flex-1 flex flex-col relative w-full overflow-hidden">
+        {/* Header */}
+        <header className="glass sticky top-0 z-40 px-4 md:px-8 py-3 flex justify-between items-center border-b border-slate-200/50 dark:border-slate-700/50 bg-white/70 dark:bg-slate-900/70">
+          <div className="flex items-center gap-3 md:hidden">
+            <span className="text-2xl">🌱</span>
+            <h1 className="font-bold text-xl tracking-tight text-primary">GoalJar</h1>
+          </div>
+          <div className="hidden md:flex items-center text-sm font-bold text-slate-400">
+            Welcome, {username}
+          </div>
+          <div className="flex items-center gap-3 md:gap-4 ml-auto">
+            <div className={`hidden sm:flex items-center text-xs font-bold px-3 py-1.5 rounded-full ${statusConfig.cls}`}>
+              <i className={`fas ${statusConfig.icon} mr-1.5`}></i> {statusConfig.text}
+            </div>
+
+            {/* Auto vs Manual Header Button */}
+            {S.syncMode === "auto" ? (
+              <button
+                onClick={handleBankSync}
+                disabled={syncingBank}
+                className="btn-outline py-1.5 px-3 text-xs bg-white dark:bg-slate-800 flex items-center gap-2 border-primary/40 text-primary"
+              >
+                <i className={`fas fa-sync-alt ${syncingBank ? "fa-spin" : ""}`}></i>
+                <span>{syncingBank ? "Syncing..." : "Sync Bank"}</span>
+              </button>
+            ) : (
+              <PlaidBtn />
+            )}
+
+            <button
+              onClick={toggleTheme}
+              className="w-10 h-10 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition flex items-center justify-center text-slate-500"
+            >
+              <i className="fas fa-moon dark:hidden text-lg"></i>
+              <i className="fas fa-sun hidden dark:block text-yellow-400 text-lg"></i>
+            </button>
+            <div className="flex items-center gap-2 pl-2 border-l border-slate-300 dark:border-slate-700">
+              <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center font-bold">
+                {username.charAt(0).toUpperCase()}
+              </div>
+              <button onClick={onLogout} className="p-2 text-slate-400 hover:text-red-500 transition">
+                <i className="fas fa-sign-out-alt"></i>
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {/* Mobile Horizontal Nav */}
+        <nav className="glass sticky top-[60px] md:hidden z-30 flex overflow-x-auto px-2 py-2 gap-2 border-b border-slate-200/50 dark:border-slate-700/50 no-scrollbar bg-white/70 dark:bg-slate-900/70">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => {
+                setPrefill(null);
+                setTab(t.id);
+              }}
+              className={`flex-col justify-center min-w-[70px] px-2 py-2 rounded-xl text-center transition-all ${
+                tab === t.id ? "bg-primary text-white shadow-md" : "text-slate-500 dark:text-slate-400"
+              }`}
+            >
+              <i className={`fas ${t.icon} text-lg mb-1 ${tab === t.id ? "text-white" : "text-slate-400"}`}></i>
+              <div className="text-[10px] uppercase font-bold">{t.label}</div>
+            </button>
+          ))}
+        </nav>
+
+        {/* Main Scrollable Content */}
+        <main className="flex-1 overflow-y-auto p-4 md:p-8 relative">
+          {/* STICKY OVERVIEW MODULE */}
+          <section className="glass p-5 md:p-6 rounded-3xl sticky top-0 z-20 shadow-sm mb-6 bg-white/80 dark:bg-slate-800/80 border border-slate-200/50 dark:border-slate-700/50">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 flex flex-col justify-center">
+                <h2 className="text-slate-500 dark:text-slate-400 font-bold mb-1 tracking-wide uppercase text-xs">
+                  Money left this month
+                </h2>
+                <div
+                  className={`text-4xl md:text-5xl font-extrabold mb-4 ${
+                    left < 0 ? "text-red-500" : "text-slate-800 dark:text-white"
+                  }`}
+                >
+                  {tk(left)}
+                </div>
+                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-3 mb-2 overflow-hidden">
+                  <div
+                    className={`h-3 rounded-full transition-all duration-500 ${
+                      left < 0 ? "bg-red-500" : "bg-primary"
+                    }`}
+                    style={{
+                      width: `${
+                        S.income > 0 ? Math.max(0, Math.min(100, (totalSpent(S) / S.income) * 100)) : 0
+                      }%`,
+                    }}
+                  ></div>
+                </div>
+                <div className="flex justify-between text-xs text-slate-500 font-bold uppercase">
+                  <span>{Math.round(S.income > 0 ? (totalSpent(S) / S.income) * 100 : 0)}% Spent</span>
+                  <span>100%</span>
+                </div>
+              </div>
+
+              {/* Stats & Income (Automatic vs Manual) */}
+              <div className="flex flex-col gap-4 justify-center bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-700/50">
+                <div className="flex justify-between items-end">
+                  <div>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">
+                      {S.syncMode === "auto" ? "Bank Balance" : "Total Income"}
+                    </p>
+                    <p className="text-lg font-bold text-primary">{tk(S.income)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">Total Spent</p>
+                    <p className="text-lg font-bold text-red-500">{tk(totalSpent(S))}</p>
+                  </div>
+                </div>
+                <hr className="border-slate-200 dark:border-slate-700" />
+
+                {S.syncMode === "auto" ? (
+                  <div className="flex items-center justify-between bg-primary/10 px-3 py-2 rounded-xl border border-primary/20 text-primary">
+                    <div className="flex items-center gap-2">
+                      <i className="fas fa-university"></i>
+                      <span className="text-xs font-bold">{S.plaidInstName || "Linked Bank"}</span>
+                    </div>
+                    <span className="text-[10px] font-semibold bg-primary text-white px-2 py-0.5 rounded-full">
+                      Auto
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-sm">৳</span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={inc}
+                        onChange={(e) => setInc(e.target.value)}
+                        className="app-input pl-7 py-2 text-sm font-bold"
+                        placeholder="Income"
+                      />
+                    </div>
+                    <button onClick={saveIncome} className="btn-primary py-2 px-4 rounded-xl">
+                      <i className="fas fa-check"></i>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+
+          {/* DYNAMIC TAB CONTENT */}
+          <div className="pb-10">
+            {tab === "dashboard" && <DashboardHome S={S} setTab={setTab} />}
+            {tab === "env" && <Envelopes S={S} setS={setS} />}
+            {tab === "exp" && <Expenses S={S} setS={setS} />}
+            {tab === "tx" && <Transactions S={S} />}
+            {tab === "aff" && <Afford S={S} prefill={prefill} />}
+            {tab === "goal" && <Goals S={S} setS={setS} />}
+            {tab === "wish" && <Wishlist S={S} setS={setS} onCheck={checkWish} />}
+            {tab === "ai" && <AiHelper S={S} />}
+            {tab === "rew" && <Rewards S={S} />}
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [user, setUser] = useState(() => localStorage.getItem(SESSION_KEY));
+  if (!user) return <Login onLogin={setUser} />;
+  return <Dashboard username={user} onLogout={() => { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(SESSION_KEY); setUser(null); }} />;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

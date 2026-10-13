@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GoalJar (React)</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef3f1;--card:#fff;--ink:#12302a;--mute:#5d746d;--line:#d4dfdb;--acc:#e8a317;--accink:#2a1d00;--bad:#c8452d;--good:#1f7a5a;--r:14px;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1a17;--card:#162622;--ink:#e6f0ec;--mute:#93aca4;--line:#27403a;--bad:#ff7a62;--good:#4cc79a}}
+:root[data-theme="dark"]{--bg:#0e1a17;--card:#162622;--ink:#e6f0ec;--mute:#93aca4;--line:#27403a;--bad:#ff7a62;--good:#4cc79a}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.5 "Bricolage Grotesque",system-ui,sans-serif}
+main{max-width:720px;margin:0 auto;padding:20px 16px 90px}
+h1{font-size:2rem;font-weight:800;margin:0;letter-spacing:-.02em}
+h2{font-size:1.15rem;margin:0 0 10px}
+.top{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-bottom:16px}
+.sub{color:var(--mute);font-size:.9rem}
+nav{display:flex;gap:6px;overflow-x:auto;margin-bottom:16px;padding-bottom:4px}
+nav button{flex:none;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:8px 14px;border-radius:99px;font:inherit;cursor:pointer}
+nav button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row>*{flex:1 1 120px}
+input,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;min-width:0;width:100%}
+button.b{flex:0 0 auto;background:var(--acc);color:var(--accink);border:0;border-radius:10px;padding:10px 16px;font:inherit;font-weight:600;cursor:pointer}
+button.g{background:none;border:1px solid var(--line);color:var(--mute);border-radius:8px;padding:4px 10px;font:inherit;font-size:.85rem;cursor:pointer;flex:0 0 auto}
+:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.big{font-size:2.4rem;font-weight:800;letter-spacing:-.03em;line-height:1.1}
+.bar{height:10px;background:var(--line);border-radius:99px;overflow:hidden;margin:8px 0 4px}
+.bar i{display:block;height:100%;background:var(--good);border-radius:99px}
+.bar.over i{background:var(--bad)}.bar.warn i{background:var(--acc)}
+.split{display:flex;justify-content:space-between;gap:8px;font-size:.9rem;color:var(--mute)}
+.item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--line)}
+.item:first-of-type{border-top:0}
+.verdict{padding:14px;border-radius:12px;margin-top:12px;font-weight:600}
+.verdict.ok{background:color-mix(in srgb,var(--good) 18%,transparent)}
+.verdict.no{background:color-mix(in srgb,var(--bad) 18%,transparent)}
+.verdict.mid{background:color-mix(in srgb,var(--acc) 25%,transparent)}
+.empty{color:var(--mute);text-align:center;padding:18px 0}
+.pill{font-size:.8rem;padding:2px 10px;border-radius:99px;background:var(--line)}
+.c1{fill:var(--line)}.c2{fill:var(--good)}.c3{fill:var(--bad)}svg text{fill:var(--ink);font:12px "Bricolage Grotesque",system-ui,sans-serif}
+.msg{padding:10px 12px;border-radius:12px;margin:6px 0;max-width:90%}.me{background:var(--acc);color:var(--accink);margin-left:auto}.bot{background:var(--bg);border:1px solid var(--line)}
+.plant{font-size:4rem;line-height:1}.badge{display:inline-block;padding:6px 12px;border-radius:99px;border:1px solid var(--line);margin:4px 4px 0 0}.badge.on{background:var(--good);color:#fff;border-color:var(--good)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const tk = (n) => "৳" + Math.round(n).toLocaleString("en-IN");
+const uid = () => Math.random().toString(36).slice(2, 9);
+const num = (v) => { const x = parseFloat(v); return x > 0 ? x : 0; };
+const spent = (S, id) => S.exp.filter((x) => x.env === id).reduce((a, x) => a + x.amt, 0);
+const totalSpent = (S) => S.exp.reduce((a, x) => a + x.amt, 0);
+const savedTotal = (S) => S.goals.reduce((a, g) => a + g.saved, 0);
+
+function verdict(S, price, envId) {
+const e = S.envs.find((v) => v.id === envId);
+const total = S.income - totalSpent(S);
+const after = (e ? e.limit - spent(S, e.id) : 0) - price;
+const goalLeft = S.goals.reduce((a, g) => a + Math.max(0, g.target - g.saved), 0);
+let cls, msg;
+if (price > total) { cls = "no"; msg = `Not now. This is more than the ${tk(total)} you have left this month.`; }
+else if (after < 0) { cls = "mid"; msg = `You have the money, but it puts ${e ? e.name : "this envelope"} over budget by ${tk(-after)}.`; }
+else { cls = "ok"; msg = `You can afford this. ${e ? e.name : "Envelope"} drops to ${tk(after)} and your month to ${tk(total - price)}.`; }
+if (goalLeft > 0 && cls !== "no") msg += ` You still need ${tk(goalLeft)} across your savings goals.`;
+return { cls, msg };
+}
+
+function advise(S, q) {
+const m = q.replace(/,/g, "").match(/\d+/), total = S.income - totalSpent(S), sp = totalSpent(S);
+if (m) {
+const p = +m[0];
+if (!S.income) return "Set your monthly income first.";
+if (p > total) return `Not now. ${tk(p)} is more than the ${tk(total)} you have left.`;
+return `You can afford it, but only ${tk(total - p)} would be left this month. Consider adding it to your wishlist for 48 hours first.`;
+}
+if (!sp) return "Add a few expenses first, then I can find patterns.";
+const top = [...S.envs].sort((a, b) => spent(S, b.id) - spent(S, a.id))[0], t = spent(S, top.id);
+let r = `${top.name} is your biggest spend: ${tk(t)} (${Math.round((t / sp) * 100)}% of spending). Cutting 10% would free ${tk(t * 0.1)} for savings.`;
+const o = S.envs.filter((e) => spent(S, e.id) > e.limit);
+if (o.length) r += ` Over budget: ${o.map((e) => e.name).join(", ")}.`;
+return r;
+}
+
+const USERS_KEY = "goaljar.users.v1";
+const SESSION_KEY = "goaljar.session.v1";
+const DATA_PREFIX = "goaljar.data.v1.";
+
+function emptyStore() {
+return { income: 0, incomeDate: null, envs: [], exp: [], goals: [], wish: [] };
+}
+function defaultStore() {
+const base = emptyStore();
+base.envs = ["Food", "Transport", "Shopping", "Entertainment", "Bills"].map((name) => ({ id: uid(), name, limit: 0 }));
+return base;
+}
+function loadUserData(username) {
+try {
+const old = JSON.parse(localStorage.getItem("goaljar.v1") || "null");
+const saved = JSON.parse(localStorage.getItem(DATA_PREFIX + username) || "null");
+if (saved) return saved;
+if (old && username === "demo") return old;
+} catch {}
+return defaultStore();
+}
+function saveUserData(username, S) {
+try { localStorage.setItem(DATA_PREFIX + username, JSON.stringify(S)); } catch {}
+}
+function getUsers() {
+try { return JSON.parse(localStorage.getItem(USERS_KEY) || "[]"); } catch { return []; }
+}
+function setUsers(users) { localStorage.setItem(USERS_KEY, JSON.stringify(users)); }
+
+function useStore(username) {
+const [S, setS] = useState(() => loadUserData(username));
+useEffect(() => { setS(loadUserData(username)); }, [username]);
+useEffect(() => { saveUserData(username, S); }, [username, S]);
+return [S, setS];
+}
+
+function Bar({ used, max, noWarn }) {
+const p = max > 0 ? Math.min(100, (used / max) * 100) : used > 0 ? 100 : 0;
+const c = used > max ? "over" : !noWarn && p > 80 ? "warn" : "";
+return <div className={"bar " + c}><i style={{ width: p + "%" }} /></div>;
+}
+
+function Envelopes({ S, setS }) {
+const [name, setName] = useState(""), [lim, setLim] = useState("");
+const add = () => {
+if (!name.trim()) return;
+setS((s) => ({ ...s, envs: [...s.envs, { id: uid(), name: name.trim(), limit: num(lim) }] }));
+setName(""); setLim("");
+};
+const setLimit = (id, v) => setS((s) => ({ ...s, envs: s.envs.map((e) => (e.id === id ? { ...e, limit: num(v) } : e)) }));
+const del = (id) => setS((s) => ({ ...s, envs: s.envs.filter((e) => e.id !== id) }));
+return (
+<>
+<div className="card"><h2>Add envelope</h2>
+<div className="row">
+<input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (e.g. Food)" />
+<input type="number" min="0" value={lim} onChange={(e) => setLim(e.target.value)} placeholder="Budget (৳)" />
+<button className="b" onClick={add}>Add envelope</button>
+</div>
+</div>
+{S.envs.map((e) => {
+const s = spent(S, e.id), r = e.limit - s;
+return (
+<div className="card" key={e.id}>
+<div className="item" style={{ border: 0, padding: 0 }}><strong>{e.name}</strong><span>{tk(s)} / {tk(e.limit)}</span></div>
+<Bar used={s} max={e.limit} />
+<div className="split">
+<span style={{ color: r < 0 ? "var(--bad)" : "inherit" }}>{r < 0 ? "Over by " + tk(-r) : tk(r) + " remaining"}</span>
+<span className="row" style={{ flexWrap: "nowrap", gap: 6 }}>
+<input type="number" min="0" defaultValue={e.limit} key={e.id + e.limit} style={{ width: 90, padding: "4px 8px" }}
+aria-label={"Budget for " + e.name} onBlur={(ev) => setLimit(e.id, ev.target.value)} />
+<button className="g" onClick={() => del(e.id)}>Remove</button>
+</span>
+</div>
+</div>
+);
+})}
+</>
+);
+}
+
+function Expenses({ S, setS }) {
+const [env, setEnv] = useState(S.envs[0]?.id || ""), [amt, setAmt] = useState(""), [note, setNote] = useState("");
+const add = () => {
+const a = num(amt);
+if (!a || !S.envs.length) return;
+setS((s) => ({ ...s, exp: [...s.exp, { id: uid(), env: env || s.envs[0].id, amt: a, note: note.trim(), t: Date.now() }] }));
+setAmt(""); setNote("");
+};
+const del = (id) => setS((s) => ({ ...s, exp: s.exp.filter((x) => x.id !== id) }));
+return (
+<>
+<div className="card"><h2>Add expense</h2>
+<div className="row">
+<select value={env} onChange={(e) => setEnv(e.target.value)}>{S.envs.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}</select>
+<input type="number" min="0" value={amt} onChange={(e) => setAmt(e.target.value)} placeholder="Amount (৳)" />
+<input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" />
+<button className="b" onClick={add}>Add expense</button>
+</div>
+</div>
+<div className="card"><h2>Recent</h2>
+{!S.exp.length && <div className="empty">No expenses yet. Add your first one above.</div>}
+{[...S.exp].reverse().slice(0, 30).map((x) => {
+const e = S.envs.find((v) => v.id === x.env);
+return (
+<div className="item" key={x.id}>
+<div><strong>{tk(x.amt)}</strong> <span className="pill">{e ? e.name : "Removed"}</span>
+<div className="sub">{x.note} {new Date(x.t).toLocaleDateString()}</div></div>
+<button className="g" onClick={() => del(x.id)}>Delete</button>
+</div>
+);
+})}
+</div>
+</>
+);
+}
+
+function Afford({ S, prefill }) {
+const [price, setPrice] = useState(prefill?.price || "");
+const [env, setEnv] = useState(S.envs[0]?.id || "");
+const [res, setRes] = useState(prefill ? verdict(S, prefill.price, S.envs[0]?.id) : null);
+const check = () => { const p = num(price); setRes(p ? verdict(S, p, env) : { cls: "mid", msg: "Enter a price first." }); };
+return (
+<div className="card"><h2>Can I afford this?</h2>
+<div className="row">
+<input type="number" min="0" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Price (৳)" />
+<select value={env} onChange={(e) => setEnv(e.target.value)}>{S.envs.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}</select>
+<button className="b" onClick={check}>Check</button>
+</div>
+{res && <div className={"verdict " + res.cls}>{res.msg}</div>}
+</div>
+);
+}
+
+function Goal({ g, setS }) {
+const [add, setAdd] = useState("");
+const l = Math.max(0, g.target - g.saved);
+const put = () => { const v = num(add); if (!v) return; setS((s) => ({ ...s, goals: s.goals.map((x) => (x.id === g.id ? { ...x, saved: x.saved + v } : x)) })); setAdd(""); };
+const del = () => setS((s) => ({ ...s, goals: s.goals.filter((x) => x.id !== g.id) }));
+return (
+<div className="card">
+<div className="item" style={{ border: 0, padding: 0 }}><strong>{g.name}</strong><span>{tk(g.saved)} / {tk(g.target)}</span></div>
+<Bar used={g.saved} max={g.target} noWarn />
+<div className="split"><span>{l ? tk(l) + " to go" : "Goal reached"}</span></div>
+<div className="row" style={{ marginTop: 8, flexWrap: "nowrap" }}>
+<input type="number" min="0" value={add} onChange={(e) => setAdd(e.target.value)} placeholder="Add savings (৳)" />
+<button className="b" onClick={put}>Add</button>
+<button className="g" onClick={del}>Remove</button>
+</div>
+</div>
+);
+}
+
+function Goals({ S, setS }) {
+const [name, setName] = useState(""), [target, setTarget] = useState("");
+const create = () => {
+if (!name.trim() || !num(target)) return;
+setS((s) => ({ ...s, goals: [...s.goals, { id: uid(), name: name.trim(), target: num(target), saved: 0 }] }));
+setName(""); setTarget("");
+};
+return (
+<>
+<div className="card"><h2>New goal</h2>
+<div className="row">
+<input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Laptop" />
+<input type="number" min="0" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="Target (৳)" />
+<button className="b" onClick={create}>Create goal</button>
+</div>
+</div>
+{!S.goals.length && <div className="empty">No goals yet. Pick something you are saving for.</div>}
+{S.goals.map((g) => <Goal key={g.id} g={g} setS={setS} />)}
+</>
+);
+}
+
+function Wishlist({ S, setS, onCheck }) {
+const [name, setName] = useState(""), [price, setPrice] = useState("");
+const add = () => {
+if (!name.trim() || !num(price)) return;
+setS((s) => ({ ...s, wish: [...s.wish, { id: uid(), name: name.trim(), price: num(price), t: Date.now() }] }));
+setName(""); setPrice("");
+};
+const del = (id) => setS((s) => ({ ...s, wish: s.wish.filter((w) => w.id !== id) }));
+return (
+<>
+<div className="card"><h2>Add to wishlist</h2>
+<p className="sub" style={{ margin: "0 0 10px" }}>Non-essential buys wait 48 hours. Then you decide again.</p>
+<div className="row">
+<input value={name} onChange={(e) => setName(e.target.value)} placeholder="Item" />
+<input type="number" min="0" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Price (৳)" />
+<button className="b" onClick={add}>Add item</button>
+</div>
+</div>
+{!S.wish.length && <div className="empty">Nothing waiting. Good sign.</div>}
+{S.wish.map((w) => {
+const ms = w.t + 48 * 36e5 - Date.now(), ready = ms <= 0, hrs = Math.ceil(ms / 36e5);
+return (
+<div className="card" key={w.id}>
+<div className="item" style={{ border: 0, padding: 0 }}><strong>{w.name}</strong><span>{tk(w.price)}</span></div>
+<div className="split"><span>{ready ? "Cool-down finished. Still want it?" : hrs + " hours left to think"}</span></div>
+<div className="row" style={{ marginTop: 8, flexWrap: "nowrap" }}>
+{ready && <button className="b" onClick={() => onCheck(w)}>Yes, check budget</button>}
+<button className="g" onClick={() => del(w.id)}>{ready ? "No, drop it" : "Remove"}</button>
+</div>
+</div>
+);
+})}
+</>
+);
+}
+
+function Reports({ S }) {
+const over = S.envs.filter((e) => spent(S, e.id) > e.limit);
+const mx = Math.max(1, ...S.envs.map((e) => Math.max(e.limit, spent(S, e.id))));
+return (
+<>
+<div className="card"><h2>This month</h2>
+<div className="row">
+<div><div className="sub">Income</div><strong>{tk(S.income)}</strong></div>
+<div><div className="sub">Spent</div><strong>{tk(totalSpent(S))}</strong></div>
+<div><div className="sub">Saved in goals</div><strong>{tk(savedTotal(S))}</strong></div>
+</div>
+</div>
+<div className="card"><h2>Budget vs spent</h2>
+<svg viewBox={`0 0 400 ${S.envs.length * 34 + 4}`} width="100%" role="img" aria-label="Budget versus spending by envelope">
+{S.envs.map((e, i) => {
+const y = i * 34 + 4, b = (e.limit / mx) * 300, x = (spent(S, e.id) / mx) * 300;
+return (
+<g key={e.id}>
+<text x="0" y={y + 10}>{e.name}</text>
+<rect className="c1" x="90" y={y} width={b} height="10" rx="5" />
+<rect className={x > b ? "c3" : "c2"} x="90" y={y + 14} width={x} height="10" rx="5" />
+</g>
+);
+})}
+</svg>
+<div className="sub">Grey = budget. Green = spent. Red = over budget.</div>
+</div>
+<div className="card"><h2>Over budget</h2>
+{over.length ? over.map((e) => (
+<div className="item" key={e.id}><span>{e.name}</span><strong style={{ color: "var(--bad)" }}>+{tk(spent(S, e.id) - e.limit)}</strong></div>
+)) : <div className="empty">No envelope is over budget.</div>}
+</div>
+</>
+);
+}
+
+
+function Transactions({ S }) {
+const [filter, setFilter] = useState("all"), [q, setQ] = useState("");
+const rows = [];
+if (S.income > 0) rows.push({ id: "income", type: "income", amount: S.income, category: "Income", note: "Monthly income", t: S.incomeDate || Date.now() });
+S.exp.forEach((x) => { const e = S.envs.find((v) => v.id === x.env); rows.push({ id: "e-" + x.id, type: "expense", amount: x.amt, category: e ? e.name : "Removed", note: x.note || "Expense", t: x.t }); });
+S.goals.forEach((g) => { if (g.saved > 0) rows.push({ id: "g-" + g.id, type: "saving", amount: g.saved, category: "Savings", note: g.name, t: g.updatedAt || Date.now() }); });
+const search = q.trim().toLowerCase();
+const filtered = rows.filter((x) => (filter === "all" || x.type === filter) && (!search || (x.note + " " + x.category).toLowerCase().includes(search))).sort((a,b) => b.t - a.t);
+const income = rows.filter(x => x.type === "income").reduce((a,x) => a+x.amount,0);
+const expenses = rows.filter(x => x.type === "expense").reduce((a,x) => a+x.amount,0);
+const savings = rows.filter(x => x.type === "saving").reduce((a,x) => a+x.amount,0);
+return (<>
+<div className="card"><h2>Transaction report</h2>
+<div className="row">
+<div><div className="sub">Income</div><strong>{tk(income)}</strong></div>
+<div><div className="sub">Expenses</div><strong>{tk(expenses)}</strong></div>
+<div><div className="sub">Savings</div><strong>{tk(savings)}</strong></div>
+<div><div className="sub">Balance</div><strong>{tk(income-expenses-savings)}</strong></div>
+</div></div>
+<div className="card"><div className="row">
+<input value={q} onChange={e => setQ(e.target.value)} placeholder="Search transactions" />
+<select value={filter} onChange={e => setFilter(e.target.value)}><option value="all">All</option><option value="income">Income</option><option value="expense">Expenses</option><option value="saving">Savings</option></select>
+</div></div>
+<div className="card"><h2>All transactions</h2>
+{!filtered.length && <div className="empty">No transactions found.</div>}
+{filtered.map(x => <div className="item" key={x.id}>
+<div><strong>{x.type === "expense" ? "-" : "+"}{tk(x.amount)}</strong> <span className="pill">{x.category}</span><div className="sub">{x.note} · {new Date(x.t).toLocaleDateString()}</div></div>
+<span className="pill">{x.type}</span>
+</div>)}
+</div>
+</>);
+}
+
+function Login({ onLogin }) {
+const [mode, setMode] = useState("login"), [username, setUsername] = useState(""), [password, setPassword] = useState(""), [err, setErr] = useState("");
+const submit = () => {
+const u = username.trim().toLowerCase(); if (!u || !password) { setErr("Enter username and password."); return; }
+const users = getUsers();
+if (mode === "register") {
+if (users.some(x => x.username === u)) { setErr("Username already exists."); return; }
+users.push({ username: u, password }); setUsers(users); localStorage.setItem(SESSION_KEY, u); onLogin(u); return;
+}
+const user = users.find(x => x.username === u && x.password === password);
+if (!user) { setErr("Invalid username or password."); return; }
+localStorage.setItem(SESSION_KEY, u); onLogin(u);
+};
+return <main><div className="card" style={{ marginTop: 60 }}>
+<h1 style={{ marginBottom: 4 }}>GoalJar</h1><div className="sub" style={{ marginBottom: 20 }}>Spend with a plan. Save with a goal.</div>
+<h2>{mode === "login" ? "Welcome back" : "Create account"}</h2>
+<div className="row"><input value={username} onChange={e=>{setUsername(e.target.value);setErr("")}} placeholder="Username" autoComplete="username" />
+<input type="password" value={password} onChange={e=>{setPassword(e.target.value);setErr("")}} placeholder="Password" autoComplete={mode === "login" ? "current-password" : "new-password"} />
+<button className="b" onClick={submit}>{mode === "login" ? "Login" : "Register"}</button></div>
+{err && <div className="verdict no">{err}</div>}
+<div className="sub" style={{ marginTop: 14 }}>Prototype login: data is separated per username in this browser. For real security, connect Firebase/Supabase/Node authentication later.</div>
+<button className="g" style={{ marginTop: 12 }} onClick={()=>{setMode(mode === "login" ? "register" : "login");setErr("")}}>{mode === "login" ? "Create a new account" : "I already have an account"}</button>
+</div></main>;
+}
+
+function AiHelper({ S }) {
+const [log, setLog] = useState([]), [q, setQ] = useState("");
+const ask = () => {
+const text = q.trim();
+if (!text) return;
+setLog((l) => [...l, { me: true, t: text }, { t: advise(S, text) }]);
+setQ("");
+};
+return (
+<div className="card"><h2>AI helper</h2>
+{!log.length && <div className="sub">Ask: "Can I afford a 10000 headphone?" or "Where am I overspending?"</div>}
+{log.map((m, i) => <div key={i} className={"msg " + (m.me ? "me" : "bot")}>{m.t}</div>)}
+<div className="row" style={{ marginTop: 10 }}>
+<input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && ask()} placeholder="Ask about your money" />
+<button className="b" onClick={ask}>Ask</button>
+</div>
+</div>
+);
+}
+
+function Rewards({ S }) {
+const sv = savedTotal(S), over = S.envs.some((e) => spent(S, e.id) > e.limit), pts = S.exp.length * 5 + Math.floor(sv / 100);
+const days = new Set(S.exp.map((x) => new Date(x.t).toDateString()));
+let st = 0; const d = new Date();
+while (days.has(d.toDateString())) { st++; d.setDate(d.getDate() - 1); }
+const plant = over ? "🥀" : sv >= 5000 ? "🌳" : sv >= 1000 ? "🌿" : "🌱";
+const badges = [
+["First expense logged", S.exp.length >= 1],
+["Saver: money in a goal", sv > 0],
+["Budget keeper: 3+ expenses, none over", S.exp.length >= 3 && !over],
+["Goal reached", S.goals.some((g) => g.saved >= g.target)],
+];
+return (
+<>
+<div className="card" style={{ textAlign: "center" }}>
+<div className="plant">{plant}</div>
+<div className="sub">{over ? "Your plant wilted. Get back under budget to revive it." : "It grows as you save."}</div>
+<div className="big">{pts} pts</div>
+<div className="sub">Streak: {st} day{st === 1 ? "" : "s"} of logging expenses</div>
+</div>
+<div className="card"><h2>Badges</h2>
+{badges.map(([n, on]) => <span key={n} className={"badge" + (on ? " on" : "")}>{n}</span>)}
+</div>
+</>
+);
+}
+
+const TABS = [["env", "Envelopes"], ["exp", "Expenses"], ["tx", "Transactions"], ["aff", "Can I afford it?"], ["goal", "Goals"], ["wish", "Wishlist"], ["rep", "Reports"], ["ai", "AI helper"], ["rew", "Rewards"]];
+
+function App() {
+const [user, setUser] = useState(() => localStorage.getItem(SESSION_KEY));
+if (!user) return <Login onLogin={setUser} />;
+return <Dashboard username={user} onLogout={() => { localStorage.removeItem(SESSION_KEY); setUser(null); }} />;
+}
+
+function Dashboard({ username, onLogout }) {
+const [S, setS] = useStore(username);
+const [tab, setTab] = useState("env");
+const [prefill, setPrefill] = useState(null);
+const [inc, setInc] = useState(S.income || "");
+const left = S.income - totalSpent(S);
+const toggleTheme = () => {
+const r = document.documentElement;
+const dark = r.dataset.theme ? r.dataset.theme === "dark" : matchMedia("(prefers-color-scheme:dark)").matches;
+r.dataset.theme = dark ? "light" : "dark";
+};
+const checkWish = (w) => { setPrefill({ price: w.price }); setTab("aff"); };
+const saveIncome = () => setS(s => ({ ...s, income: num(inc), incomeDate: Date.now() }));
+return (<main>
+<div className="top">
+<div><h1>GoalJar</h1><div className="sub">Spend with a plan. Save with a goal. · {username}</div></div>
+<div className="row" style={{ flexWrap: "nowrap" }}><button className="g" onClick={toggleTheme}>Theme</button><button className="g" onClick={onLogout}>Logout</button></div>
+</div>
+<section className="card">
+<div className="sub">Left to spend this month</div>
+<div className="big" style={{ color: left < 0 ? "var(--bad)" : "" }}>{tk(left)}</div>
+<div className={"bar" + (left < 0 ? " over" : "")}><i style={{ width: (S.income > 0 ? Math.max(0, Math.min(100, (left / S.income) * 100)) : 0) + "%" }} /></div>
+<div className="split"><span>Spent {tk(totalSpent(S))}</span><span>Income {tk(S.income)}</span></div>
+<div className="row" style={{ marginTop: 12 }}><input type="number" min="0" value={inc} onChange={e => setInc(e.target.value)} placeholder="Monthly income (৳)" /><button className="b" onClick={saveIncome}>Save income</button></div>
+</section>
+<nav>{TABS.map(([k,label]) => <button key={k} className={tab === k ? "on" : ""} onClick={() => { setPrefill(null); setTab(k); }}>{label}</button>)}</nav>
+{tab === "env" && <Envelopes S={S} setS={setS} />}
+{tab === "exp" && <Expenses S={S} setS={setS} />}
+{tab === "tx" && <Transactions S={S} />}
+{tab === "aff" && <Afford S={S} prefill={prefill} />}
+{tab === "goal" && <Goals S={S} setS={setS} />}
+{tab === "wish" && <Wishlist S={S} setS={setS} onCheck={checkWish} />}
+{tab === "rep" && <Reports S={S} />}
+{tab === "ai" && <AiHelper S={S} />}
+{tab === "rew" && <Rewards S={S} />}
+</main>);
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
